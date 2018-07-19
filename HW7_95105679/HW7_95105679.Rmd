@@ -1,0 +1,547 @@
+---
+title: 'Seventh Week: Generalized Linear Models'
+subtitle: 'Murder or Suicide'
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    toc: true
+    number_sections: true
+---
+
+
+```{r setup, include = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 12,fig.height = 12,fig.align ="center", 
+                      fig.retina=1)
+```
+
+## Setting up the environment
+
+```{r }
+library(readr)
+library(tidyverse)
+library(h2o)
+library(car)
+library(highcharter)
+library(boot)
+source("/Users/deyapple/Documents/Courses/Term04/DA/Homework/hw_07/images/unbalanced_functions.R")
+mdata <- read_csv("/Users/deyapple/Documents/Courses/Term04/DA/Homework/hw_07/images/murder_suicide.csv")
+```
+
+# Q1
+
+## Chossing A Non-redundant Subset
+
+```{r}
+murder <- mdata %>%
+  select(ResidentStatus, 
+         Education = Education2003Revision, 
+         Sex, 
+         Age = AgeRecode52, 
+         PlaceOfDeathAndDecedentsStatus, 
+         MaritalStatus, 
+         MethodOfDisposition, 
+         MannerOfDeath, 
+         Autopsy, 
+         ActivityCode, 
+         PlaceOfInjury, 
+         Race = RaceRecode5)
+
+```
+
+After selecting a subset of variables, I have looked at all the variables containing unknown values. Based on the number of unknown observations, I have either deleted those observations or replaced them with the mean.  
+
+
+## Unknown Values 
+
+
+### Unknown Education
+
+The number of observations is high, therefore I've replaced them with the mean of the others. 
+```{r}
+nrow(murder %>%
+       filter(Education == 9))
+meanedu <- mean(murder %>%
+                  filter(Education != 9) %>%
+                  select(Education) %>%
+                  unlist() %>%
+                  unname())
+murder <- murder %>%
+  mutate(Education = ifelse(Education == 9, round(meanedu), Education))
+murder$Education = as.integer(murder$Education)
+```
+### Unknown Age 
+```{r}
+nrow(murder %>%
+       filter(Age == 52))
+murder <- murder %>%
+  filter(Age != 52)
+```
+
+### Unknown PlaceOfDeathAndDecedentsStatus
+```{r}
+nrow(murder %>%
+       filter(PlaceOfDeathAndDecedentsStatus == 9))
+murder <- murder %>%
+  filter(PlaceOfDeathAndDecedentsStatus != 9)
+```
+
+
+### Unknown MaritalStatus
+
+```{r}
+nrow(murder %>%
+       filter(MaritalStatus == "U"))
+murder$MaritalStatusFactor = as.integer(as.factor(murder$MaritalStatus))
+meanm <- mean(murder %>%
+                filter(MaritalStatusFactor != 4) %>%
+                select(MaritalStatusFactor) %>%
+                unlist() %>%
+                unname)
+murder <- murder %>%
+  mutate(MaritalStatus = ifelse(MaritalStatus == "U", "M", MaritalStatus), 
+         MaritalStatusFactor = ifelse(MaritalStatusFactor == 4, round(meanm), MaritalStatusFactor))
+
+```
+
+### Unknown MethodOfDisposition
+```{r}
+nrow(murder %>%
+       filter(MethodOfDisposition == "U"))
+murder$MethodOfDispositionFactor = as.integer(as.factor(murder$MethodOfDisposition))
+meand <- mean(murder %>%
+                filter(MethodOfDispositionFactor != 7) %>%
+                select(MethodOfDispositionFactor) %>%
+                unlist() %>%
+                unname())
+murder <- murder %>%
+  mutate(MethodOfDisposition = ifelse(MethodOfDisposition == "U", "C", MethodOfDisposition), 
+         MethodOfDispositionFactor = ifelse(MethodOfDispositionFactor == 7, round(meand), MethodOfDispositionFactor))
+```
+
+
+### Not Applicable Activity Code
+
+```{r}
+nrow(murder %>%
+       filter(ActivityCode == 99))
+murder <- murder %>%
+  mutate(ActivityCode = ifelse(ActivityCode == 99, 9, ActivityCode))
+```
+
+## Correlation Matrix
+
+```{r}
+Filter(is.numeric, murder) -> murder.num
+hchart(cor(murder.num))
+```
+
+```{r}
+murder.num.cor <- cor(murder.num, method = "spearman")
+
+murder.cor.melt = melt(murder.num.cor)
+
+ggplot(murder.cor.melt, aes(Var1, Var2)) + 
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(fill = value, label = round(value, 2)), size = 5, color = "black") +
+  scale_fill_gradient2(low = muted("gold"), 
+                       mid = "mistyrose", 
+                       high = muted("mediumvioletred"), 
+                       midpoint = 0) +
+  theme(panel.grid.major.x=element_blank(), 
+        panel.grid.minor.x=element_blank(), 
+        panel.grid.major.y=element_blank(), 
+        panel.grid.minor.y=element_blank(),
+        panel.background=element_rect(fill="white"),
+        axis.text.x = element_text(angle = 90, hjust = 1,vjust=1,size = 15,face = "bold"),
+        plot.title = element_text(size=20,face="bold"),
+        axis.text.y = element_text(size = 15,face = "bold")) + 
+  ggtitle("Correlation Plot") + 
+  theme(legend.title=element_text(face="bold", size=14)) + 
+  scale_x_discrete(name="") +
+  scale_y_discrete(name="") +
+  labs(fill="Corr. Coef.")
+```
+
+## Scatter Plot Matrix
+
+```{r}
+scatterplotMatrix(murder.num.cor)
+```
+
+# Q2
+
+## Studying The Effect of A Few Variables
+```{r}
+murder <- murder %>% 
+  mutate(Suicide = ifelse(MannerOfDeath == 2, 1, 0))
+```
+
+In each of the subsections below, whenever the $p-value$ generated from the test is significant(meaning less than 0.05), it means that we can reject the null hypothesis that Suicide is independent from the variable being tested(meaning different values of the variable do not affect Suicide), otherwise we fail to reject the null hypothesis. 
+
+### Gender
+
+Significant $p-value$
+
+```{r}
+chisq.test(murder$Sex, murder$Suicide)
+```
+
+### Race
+
+Significant  $p-value$.
+```{r}
+chisq.test(murder$Race, murder$Suicide)
+```
+
+
+### Education
+
+Significant  $p-value$.
+```{r}
+chisq.test(murder$Education, murder$Suicide)
+```
+
+### Age
+Significant  $p-value$.
+```{r}
+chisq.test(murder$Age, murder$Suicide)
+```
+
+### Method Of Disposition
+
+Significant  $p-value$.
+```{r}
+chisq.test(murder$MethodOfDisposition, murder$Suicide)
+```
+
+
+# Q3
+
+## Fitting A Model Using `glm()`
+
+Some of the predictors can't be viewed as numerical data such as `PlaceOfDeathAndDecedentsStatus` and `Race`. I have used `as.factor()` to account for this. 
+```{r}
+murder$PlaceOfDeathAndDecedentsStatus = as.factor(murder$PlaceOfDeathAndDecedentsStatus)
+murder$Race = as.factor(murder$Race)
+fit1 <- glm(data = murder, 
+           Suicide ~ Education + Sex + Age + 
+             PlaceOfDeathAndDecedentsStatus + MaritalStatus + 
+             MethodOfDisposition + Race, 
+           family = "binomial")
+summary(fit1)
+```
+
+For each each data point the associated deviance is calculated. This results in a set of residuals. This first part of our model(Deviance Residuals' Min, 1Q, etc.) is simply a non-parametric description of the residuals' distribution.
+
+Taking our model as a whole, the `Residual deviance` measures the lack of fit, whereas the `Null deviance` is a measure for a reduced model only consisting of the intercept.
+
+Overall, the $p-values$ seem to be significant, allthough there are a few levels of some of the categorical variables which have a high $p-value$(such as MethodOfDisposition). However, it is best not to modify our predictors by deleting the levels with high $p-values$ and keeping the ones with low$p-value$s.
+
+Let's consider deleting `MethodOfDisposition` from our model(since 3 out of 5 levels have insignificant $p-values$):
+
+```{r}
+fit2 <- glm(data = murder, 
+           Suicide ~ Education + Sex + Age + 
+             PlaceOfDeathAndDecedentsStatus + MaritalStatus + Race, 
+           family = "binomial")
+summary(fit2)
+```
+
+The AIC value turned out higher than our previous model. As well as a higher AIC value, the second model also has higher Residual Deviance, therefor `fit` seems to be more suitable than `fit2`.
+(Take note that AIC is uninformative when we only have one model. It can only be used to compare models.)
+
+## Testing How Well Our Model Fits
+
+### Hosmer-Lemeshow Goodness of Fit
+
+The Hosmer-Lemeshow test is a goodness of fit test for logistic regression, only used for binary response variables (Suicide or not).
+The test's output consists of a Hosmer-Lemeshow chi-squared value and a $p-value$($H_0$: the fitted model is correct). Small $p-value$s mean that the model is a poor fit.
+
+```{r}
+library(ResourceSelection)
+```
+
+```{r}
+hoslem.test(murder$Suicide, fitted(fit1))
+hoslem.test(murder$Suicide, fitted(fit2))
+```
+
+### Diagnostic Plots
+
+&nbsp;The top right plot is a measure of normality. The dots are close to the dashed line, therefor we can conclude that our model justifies this assumption.   
+
+&nbsp;The top left plot should be close to the zero line and free of any pattern, which has clearly been violated in our model. This plot is a measure of linearity.  
+
+&nbsp;In the bottom right plot the dots all be in the 0.05 range, which are visibly lower, so our model has behaved well in this aspect. This plot is used to determine influential observations.   
+
+&nbsp;Overall, we can conclude that this model is not a good fit.   
+
+
+
+```{r}
+glm.diag.plots(fit1, glmdiag = glm.diag(fit1))
+```
+
+# Q4
+
+```{r}
+murder <- murder %>%
+  mutate(pred = fitted(fit1, type = "response"))
+```
+
+
+## Density Plot
+
+As you can see, the peeks of each distribution is far apart, therefor our model has behaved well in distinguishing most of the suicides from the murders. However, towards the right side of the plot, we can see that our model could not differentiate between the suicides and the murders. 
+
+```{r}
+ggplot(murder) + 
+  geom_density(aes(x = pred, fill = as.factor(Suicide)), alpha = 0.5, size = 1) + 
+  theme_minimal()
+```
+
+
+## Histogram 
+
+We can see that the difference in means of predictions for suicides and murders seem to be high. 
+
+```{r, fig.height = 10, fig.width= 10}
+ggplot(murder) + 
+  geom_histogram(aes(x = Suicide, y = mean(pred), fill = as.factor(Suicide)), stat = "identity") + 
+  facet_grid(~Suicide) + 
+  theme_minimal()
+
+```
+
+## Scatter Plot + Line Graph
+
+From the below graph, we can see that in contrast to what was shown before, the model did not perform well. 
+```{r}
+
+ggplot() + 
+  geom_line(aes(x = fit1$linear.predictors, y = fit1$fitted.values)) + 
+  geom_point(aes(x = fit1$linear.predictors, y = murder$Suicide)) + 
+  theme_minimal()
+
+
+```
+
+## Scatter Plot 
+
+We can tell that our model performs well for high and low values of prediction, but not so much for the average values. 
+```{r}
+ggplot(murder) + 
+  geom_point(aes(x = Age, y = pred, col = as.factor(Suicide)), size = 1, position = "jitter") + 
+  theme_minimal()
+```
+
+# Q5
+
+## Dividing The Data into Train and Test
+
+```{r}
+murder <- na.omit(murder)
+
+index = sample(x = 1:nrow(murder),
+               size = 0.8 * nrow(murder),
+               replace = F)
+train = murder[index,] 
+test =  murder[-index,]
+
+model_glm <- glm(data = train, 
+    Suicide ~ Education + Sex + Age + 
+             PlaceOfDeathAndDecedentsStatus + MaritalStatus + 
+             MethodOfDisposition + Race, 
+    family = "binomial")
+```
+
+```{r}
+test$prediction = predict(model_glm, newdata = test, type = "response")
+train$prediction = predict(model_glm, newdata = train, type = "response")
+```
+
+## Calculating P, N, TP, ...
+
+```{r}
+P <- test %>%
+  filter(Suicide == 1) %>%
+  nrow()
+P
+```
+
+```{r}
+N <- test %>%
+  filter(Suicide == 0) %>%
+  nrow()
+N
+```
+
+```{r}
+TP <- test %>%
+  filter(Suicide == 1, 
+         prediction >= .5) %>%
+  nrow()
+TP
+```
+
+```{r}
+TN <- test %>%
+  filter(Suicide == 0, 
+         prediction < .5) %>%
+  nrow()
+TN 
+```
+
+```{r}
+FP <- test %>%
+  filter(Suicide == 0, 
+         prediction >= .5) %>%
+  nrow()
+FP
+```
+
+```{r}
+FN <- test %>%
+  filter(Suicide == 1, 
+         prediction < .5) %>%
+  nrow()
+FN
+```
+
+```{r}
+ACC <- (TP + TN) / (P + N)
+ACC
+```
+
+```{r}
+FPR <- 1 - TN / N
+FPR
+```
+
+```{r}
+TPR <- TP / P
+TPR
+```
+
+## Visualization of FP, FN, TP and TN
+
+### Confusion Matrix
+
+```{r}
+cm_info = ConfusionMatrixInfo( data = test, predict = "prediction", 
+                               actual = "Suicide", cutoff = .5)
+cm_info$plot
+```
+
+### Table
+```{r}
+table(test$Suicide,ifelse(test$prediction>0.5,1,0)) %>% plot()
+```
+
+# Q6
+
+
+
+```{r}
+accuracy_info = AccuracyCutoffInfo(train = train, test = test, 
+                                    predict = "prediction", actual = "Suicide" )
+accuracy_info$plot
+
+```
+
+Since each time we generate the code, different subsets are chosen for test and train, I've written the code below the find out the cutoff related to maximum accuracy.
+
+```{r}
+dacc <- accuracy_info$data
+dacc.max <- dacc %>%
+  mutate(trainmax = (train == max(train)), 
+         testmax = (test == max(test)))
+test.max <- dacc.max %>%
+  filter(testmax)
+train.max <- dacc.max %>%
+  filter(trainmax)
+```
+
+new test cutoff: 
+
+```{r}
+test.cutoff <- test.max$cutoff
+test.cutoff
+```
+
+new train cutoff:
+
+```{r}
+train.cutoff <- train.max$cutoff
+train.cutoff
+```
+
+
+To better visualize the change in accuracy, I have once again drawn a confusion matrix and a table but this time, with the (maybe) different cutoff.
+
+
+```{r}
+cm_info = ConfusionMatrixInfo( data = test, predict = "prediction", 
+                               actual = "Suicide", cutoff = test.cutoff)
+cm_info$plot
+```
+
+
+```{r}
+table(test$Suicide,ifelse(test$prediction>test.cutoff, 1, 0)) %>% plot()
+```
+
+
+# Q7
+## ROC Curve
+
+```{r}
+cost_fp = 100;cost_fn = 200
+roc_info = ROCInfo(data = cm_info$data, predict = "predict", 
+                     actual = "actual", cost.fp = cost_fp, cost.fn = cost_fn )
+grid.draw(roc_info$plot)
+```
+
+The bottom green part of the curve that intersects with the vertical dashed line shows the cutoff with minimum cost. (maximum accuracy)
+
+
+# Using H2O
+
+```{r}
+library(h2o)
+h2o.init()
+```
+
+```{r}
+hmurder <- as.h2o(murder)
+
+```
+
+```{r}
+hglm = h2o.glm(y = "Suicide", x= c("Education","Sex","Age", "PlaceOfDeathAndDecedentsStatus", "MaritalStatus", "MethodOfDisposition", 
+                                   "Race"),
+               training_frame = hmurder, family="binomial",nfolds = 5)
+```
+
+The MSE/RMSE isn't really high, therefor we can conclude that our model isn't completely off. 
+
+Log Loss quantifies the accuracy of a classifier by penalising false classifications([source](http://www.exegetic.biz/blog/2015/12/making-sense-logarithmic-loss/)). It is used in many competition such as competitions on Kaggle. The goal is to minimize LogLoss. Since the LogLoss of our model relatively high, we can conclude that our model does not have a high accuracy. 
+
+AUC (Area Under Curve) is high with also questions the goodness of fit of our model. 
+
+The $R^2$ Statistic is also low, which means only 35% of the variance in our response was explained by the model.
+
+Let's take a look at the part labeled `Maximum Metrics`. The fourth metric gives information related to the cutoff giving the maximum accuracy. The `threshold` column (0.530612) is the cutoff for which the maximum accuracy occurs. This maximum value is shown in the `value` column(0.820756).  
+
+```{r}
+h2o.performance(hglm)
+```
+
+# Q9
+
+&nbsp;&nbsp;Overall, the model presented here, due to various reasons stated in the previous sections, is definitely not suitable for use in real life court.  
+&nbsp;&nbsp;The accuracy of our model (about 0.8) is not high enough to be reliable. There aren't enough information (predictors) to decide from.   
+&nbsp;&nbsp;The True Positive Rate(TPR) is really high. Therefor our model behaves well in recognizing actual suicides, but behaves poorly in recognizing murders. However the number of True Negatives are extremely low compared to the total number of negatives. This is equivalent to setting a criminal free. The False Positive Rate is also high (0.4). This means more than one out of three times, a death that was actually a suicide will be declared a murder. This is equivalent to sending an innocent person to prison. The former error is much worse than the latter. In court it is much more preferred to set a criminal free than to send an innocent person to prison. However, since it is impossible to decrease both these errors to (even close to) zero, it is safer to not use our basic model in court where there is a matter of life and death :). Nevertheless, it can be used to help find a better model with less error 
+

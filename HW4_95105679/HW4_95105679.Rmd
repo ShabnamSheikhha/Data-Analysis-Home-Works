@@ -1,0 +1,1098 @@
+---
+title: "Fourth Week: Hypothesis Testing"
+subtitle: "TIMSS Analysis"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 10,fig.height = 6,fig.align ="center", 
+                      fig.retina=1)
+```
+
+```{r, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(devtools)
+library(highcharter)
+library(stringr)
+library(fastmatch)
+
+theme_set(theme_minimal())
+```
+
+# Third Assignment
+
+## Preparing The Data
+
+> <p> 
+  At first, I have made a few changes to a few of the data frames.
+</p>
+
+### Main Data Frames
+
+  In order to save space, I have only loaded the data frames that will be of use in answering the following questions.
+
+```{r}
+timss_bcg <- read_rds("/Users/deyapple/Documents/Courses/Term04/DA/timss15_grade_8/data/bcg.rds")
+timss_bsg <- read_rds("/Users/deyapple/Documents/Courses/Term04/DA/timss15_grade_8/data/bsg.rds")
+timss_bst <- read_rds("/Users/deyapple/Documents/Courses/Term04/DA/timss15_grade_8/data/bst.rds")
+timss_bts <- read_rds("/Users/deyapple/Documents/Courses/Term04/DA/timss15_grade_8/data/bts.rds")
+```
+
+### A Data Frame about the students, containing their score in Math, Science and their overall score.
+
+```{r}
+st_score <- timss_bst %>%
+  mutate(mscore = (bsmmat01 + bsmmat02 + bsmmat03 + bsmmat04 + bsmmat05) / 5, 
+         sscore = (bsssci01 + bsssci02 + bsssci03 + bsssci04 + bsssci05) / 5, 
+         oscore = (mscore + sscore) / 2) %>%
+  filter(!is.na(mscore) & !is.na(sscore) & !is.na(oscore))
+```
+
+> <p>
+  For this assignment, I have chosen questions 1, 2, 3, 4, 5, 7 and 9.
+</p>
+
+## Q1: Teachers’ Job Satisfaction affects Students’ Academic Performance.
+  
+  <p>To determine each teacher's satisfaction, I have considered the answers to part a through g of question 10 of the teacher's questionnaire. To reverse the scale, I have computed the mean and subtracted it from 5, so that 4 is the highest level of satisfaction and 1 is the lowest. 
+    Since the questionnaire is for the Mathematics teachers, I have filtered the science teachers from the data set and I have selected the `mscore` column of the `st_score` data frame.
+    </p>
+
+```{r}
+teacher_satisfaction <- timss_bts %>%
+  select(idcntry:idlink, btbg10a:btbg10g) %>%
+  mutate(satisfaction = (btbg10a + btbg10b + btbg10c + btbg10d + btbg10e + btbg10f + btbg10g) / 7) %>%
+  select(idcntry:idlink, satisfaction) %>%
+  filter(!is.na(satisfaction))
+
+tst_satis_relation <- left_join(teacher_satisfaction, 
+                                  st_score, 
+                                  by = c("idcntry", "idteach")) %>%
+  select(idstud, 
+         idteach, 
+         idcntry, 
+         satisfaction, 
+         matsubj, scisubj, 
+         score = mscore) %>%
+  filter(matsubj == 1) %>%
+  mutate(satisfaction = 5 - satisfaction) %>%
+  select(idcntry, idteach, idstud, score, satisfaction) %>%
+  filter(!is.na(score))
+```
+
+  To find whether teachers' satisfaction is effective in students' performance, I've used R's `cor.test()` function. The test results in a smalle p-value (close to 0), therefor we can conclude that our null hypothesis (that the correlation between teachers' satisfaction and students' performance score is 0, which means, teachers' satisfaction has close to no effect) isn't true.
+
+```{r}
+cor.test(tst_satis_relation$satisfaction, 
+         tst_satis_relation$score, 
+         alternative = "greater")
+```
+
+  
+### preparing the data for the plots:
+
+```{r}
+tst_satis_sample <- tst_satis_relation %>%
+  rowwise() %>%
+  sample_n(1000)
+
+tst_satis_mean <- tst_satis_relation %>%
+  group_by(satisfaction) %>%
+  summarise(avg_score = round(mean(score)), 2)
+
+```
+
+  
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+
+ggplot() + 
+  geom_point(data = tst_satis_sample, 
+             alpha = 0.2, 
+             aes(x = satisfaction, 
+                 y = score, 
+                 color = as.factor(round(satisfaction)))) + 
+  scale_x_continuous() + 
+  scale_y_continuous() + 
+  scale_color_brewer(palette = 2) + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none") + 
+  geom_line(data = tst_satis_mean, aes(x = satisfaction, y = avg_score), 
+            color = "deeppink3", 
+            size = 0.9) + 
+  geom_point(data = tst_satis_mean, aes(x = satisfaction, y = avg_score, 
+                                        color = satisfaction), 
+              color = "deeppink4") + 
+  labs(title = "Students' Scores Based on Teachers' Level of Satisfaction",
+       subtitle = "ggplot2\nThe line indicates average score for each satisfaction level",
+       x = "Level of Satisfaction", y = "Score")
+
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+tst_satis_sample %>%
+  hchart(type = 'scatter',
+         hcaes(x = satisfaction, y = score),
+         color = 'rgba(78, 166, 213, 0.2)',
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = tst_satis_mean, 
+                hcaes(x = round(satisfaction, 1), y = avg_score), 
+                type = 'line', 
+                name = 'average score', 
+                color = "purple") %>%
+  hc_yAxis(title = list(text = "Score")) %>%
+  hc_xAxis(title = list(text = "Level of Satisfaction")) %>%
+  hc_title(text = "Students' Scores Based on Teachers' Level of Satisfaction") %>%
+  hc_subtitle(text = "highcharter - The line indicates average score for each satisfaction level")
+```
+
+***
+
+### Q2: Impact of Parent Education on Student Success
+
+  I have considered part a and b of the Student's Questionnaire's 7th question. I've filtered the student's who didn't know their parents' level of education (those who answered 8), and used the average of their mother and father's education level. 
+
+```{r}
+parent_education <- timss_bsg %>% 
+  select(idcntry, idstud, bsbg07a, bsbg07b) %>%
+  filter(bsbg07a != 8) %>%
+  filter(bsbg07b != 8) %>%
+  mutate(mother_edu = bsbg07a, 
+         father_edu = bsbg07b, 
+         edu = (mother_edu + father_edu) / 2) %>%
+  select(idcntry, idstud, mother_edu, father_edu, edu)
+
+pst_edu_relation <- left_join(parent_education, st_score, by = c("idcntry", "idstud"))  %>%
+  select(idcntry, idstud, mother_edu, father_edu, edu, score = oscore) %>%
+  arrange(mother_edu) %>%
+  mutate(mother_edu_lvl = ifelse(mother_edu == 7, "Postgraduate", 
+                                ifelse(mother_edu == 6, "Bachelor’s", 
+                                       ifelse(mother_edu == 5, "Short-cycle tertiary", 
+                                              ifelse(mother_edu == 4, "Post-secondary", 
+                                                     ifelse(mother_edu == 3, "Upper secondary", 
+                                                            ifelse(mother_edu == 2, "Lower secondary", 
+                                                                   "Some Primary or \nLower secondary or \ndid not go to school"))))))) %>%
+  arrange(father_edu) %>%
+  mutate(father_edu_lvl = ifelse(father_edu == 7, "Postgraduate", 
+                                ifelse(father_edu == 6, "Bachelor’s", 
+                                       ifelse(father_edu == 5, "Short-cycle tertiary", 
+                                              ifelse(father_edu == 4, "Post-secondary", 
+                                                     ifelse(father_edu == 3, "Upper secondary", 
+                                                            ifelse(father_edu == 2, "Lower secondary", 
+                                                                   "Some Primary or \nLower secondary or \ndid not go to school")))))))
+```
+
+  To find the relationship between these two variables, I've used an ANOVA test and since the p-value has turned out to be very small, our null hypothesis (that the score mean of each group is the same) is not true. So, it's safe to assume the higher the parents' average education, the higher their children's score.
+
+```{r}
+fit <- pst_edu_relation %>%
+  aov(score ~ as.factor(edu), data = .)
+
+summary.aov(fit)
+```
+
+
+
+### preparing the data for the plots:
+
+```{r}
+
+pst_edu_sample <- rbind(pst_edu_relation %>%
+                    mutate(parent = "Mother") %>%
+                    select(idcntry, idstud, score, edu = mother_edu, edulvl = mother_edu_lvl, parent) %>%
+                    sample_n(500), 
+                  pst_edu_relation %>%
+                    mutate(parent = "Father") %>%
+                    select(idcntry, idstud, score, edu = father_edu, edulvl = father_edu_lvl, parent) %>%
+                    sample_n(500)) 
+
+pst_edu_sample$edulvl <- factor(pst_edu_sample$edulvl, 
+                                levels = c("Postgraduate", "Bachelor’s", "Short-cycle tertiary", 
+                                           "Post-secondary", "Upper secondary","Lower secondary", 
+                                           "Some Primary or \nLower secondary or \ndid not go to school"))
+
+pst_edu_mean <- rbind(pst_edu_relation %>%
+                        mutate(parent = "Mother") %>%
+                        select(idcntry, idstud, score, edu = mother_edu, parent, edulvl = mother_edu_lvl),
+                      pst_edu_relation %>%
+                        mutate(parent = "Father") %>%
+                        select(idcntry, idstud, score, edu = father_edu, parent, edulvl = father_edu_lvl)) %>%
+  group_by(edu, parent, edulvl) %>%
+  summarise(avg_score = mean(score))
+
+pst_edu_mean$edulvl <- factor(pst_edu_mean$edulvl, 
+                                levels = c("Postgraduate", "Bachelor’s", "Short-cycle tertiary", 
+                                           "Post-secondary", "Upper secondary","Lower secondary", 
+                                           "Some Primary or \nLower secondary or \ndid not go to school"))
+
+```
+
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+
+ggplot() + 
+  geom_point(data = pst_edu_sample, 
+             aes(x = edulvl, 
+                 y = score,
+                 color = parent), 
+             alpha = 0.2) + 
+  scale_y_continuous() + 
+  geom_point(data = pst_edu_mean, 
+             aes(x = edulvl, y = avg_score, 
+                 color = parent)) + 
+  geom_line(data = pst_edu_mean, 
+            aes(x = edulvl, y = avg_score, 
+                color = parent),
+            size = 0.9, 
+            group = 1) + 
+  labs(title = "Students' Score Based on Parents' Level of Education", 
+       subtitle = "ggplot2\nThe line indicates students' average score for each level of education", 
+       x = "Education", y = "Score") + 
+  facet_wrap(~parent) + 
+  theme_light() +
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) 
+```
+
+```{r}
+ggplot() + 
+  geom_boxplot(data = pst_edu_sample, 
+             aes(x = edulvl, 
+                 y = score,
+                 fill = edulvl)) + 
+  scale_fill_brewer(palette = "Spectral") + 
+  scale_y_continuous() + 
+  labs(title = "Students' Score Based on Parents' Level of Education", 
+       subtitle = "ggplot2_boxplot", 
+       x = "Education", y = "Score") + 
+  facet_wrap(~parent) + 
+  theme_linedraw() + 
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) 
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+pst_edu_sample %>%
+  hchart(type = 'scatter',
+         hcaes(x = edu, y = score),
+         color = 'rgba(255, 217, 179, 0.2)',
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = pst_edu_sample %>%
+                  group_by(edu) %>%
+                  summarise(avg_score = mean(score)), 
+                hcaes(x = edu, y = round(avg_score, 1)), 
+                type = 'line', 
+                name = 'average score', 
+                color = "maroon") %>%
+  hc_yAxis(title = list(text = "Score")) %>%
+  hc_xAxis(title = list(text = "Mother/Father Average Level of Education")) %>%
+  hc_title(text = "Students' Score Based on Parents' Level of Education") %>%
+  hc_subtitle(text = "highcharter")
+```
+
+***
+
+### Q3: Home Entertainment Facilities affects Student's Performance.
+
+  I've used part a through g of the Student's Questionnaire's 6th question. The column `num_possess` indicates the number of the questioned equipments available in each student's home. 
+
+```{r, message = FALSE}
+home_stat <- timss_bsg %>%
+  select(idcntry, idstud, bsbg06a:bsbg06g) %>% 
+  gather(key = "possession", value = "state", bsbg06a:bsbg06g) %>%
+  group_by(idcntry, idstud) %>%
+  summarise(num_possess = sum(state == 1))
+
+hst_relation <- left_join(home_stat, 
+                               st_score, 
+                               by = c("idcntry", "idstud")) %>%
+  select(idcntry, idstud, score = oscore, num_possess) %>%
+  filter(!is.na(num_possess))
+```
+
+  Since the p-value is small, we can conclude that home entertainment facilities has a positive effect on student performance.
+  
+```{r}
+fit <- hst_relation %>%
+  aov(score ~ as.factor(num_possess), data = .)
+
+summary.aov(fit)
+```
+
+
+### preparing the data for the plots : 
+
+```{r}
+hst_sample <- hst_relation %>%
+  rowwise() %>%
+  sample_n(1000) %>%
+  filter(!is.na(score) & !is.na(num_possess))
+hst_mean <- hst_relation %>%
+  group_by(num_possess) %>%
+  summarise(avg_score = mean(score))
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r, warning=FALSE}
+ggplot() + 
+  geom_point(data = hst_sample, aes(x = num_possess, y = score),
+             color = "grey", 
+             alpha = 0.2) +
+  scale_x_continuous() + 
+  scale_y_continuous() +
+  theme(legend.position = "none") +
+  geom_point(data = hst_mean, 
+             aes(x = num_possess, y = avg_score), 
+             color = "darkgoldenrod3") + 
+  geom_line(data = hst_mean, 
+            aes(x = num_possess, y = avg_score), 
+            color = "darkgoldenrod3", 
+            size = 0.9) + 
+  labs(title = "Students' Score Based on Number of Home Entertainment Facilities", 
+       subtitle = "ggplot2", 
+       x = "Number of Entertainment Facilities", y = "Score")
+```
+
+```{r}
+ggplot() + 
+  geom_boxplot(data = hst_sample, 
+               aes(x = as.factor(num_possess), y = score, 
+                   fill = as.factor(num_possess))) +
+  scale_y_continuous() +
+  scale_fill_brewer(palette = "Pastel2") + 
+  theme(legend.position = "none") +
+  labs(title = "Students' Score Based on Number of Home Entertainment Facilities", 
+       subtitle = "ggplot2", 
+       x = "Number of Entertainment Facilities", y = "Score")
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+
+hst_sample %>%
+  hchart(type = 'scatter', 
+         hcaes(x = num_possess, y = round(score, 1)), 
+         color = 'rgba(204, 204, 255, 0.4)', 
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = hst_mean, 
+                hcaes(x = num_possess, y = round(avg_score, 1)), 
+                type = 'line', 
+                name = 'average score', 
+                color = 'rgb(0, 0, 179)') %>%
+  hc_xAxis(title = list(text = "Number of Entertainment Facilities")) %>%
+  hc_yAxis(title = list(text = "Score")) %>%
+  hc_title(text = "Students' Score Based on Number of Home Entertainment Facilities") %>%
+  hc_subtitle(text = "highcharter")
+```
+
+***
+
+### Q4: School's Peaceful Atmosphere Affects Student Achievement.
+
+  To test this hypothesis, from the Student's Questionnaire, I have chosen parts of question 15 and 16, and from the School's Questionnaire, I have chosen parts of question 15. By doing this, I have both the student's and the school's view on this matter. To define a measure of peacefulness, I have used the mean of all of these variables.
+  
+
+```{r}
+pst_stat <- timss_bsg %>% ## for each student
+  select(idcntry, idstud, idschool, bsbg16c:bsbg16i, bsbg15b, bsbg15c) %>%
+  mutate(bsbg16c = 5 - bsbg16c, bsbg16d = 5 - bsbg16d, bsbg16e  = 5 - bsbg16e, 
+         bsbg16f  = 5 - bsbg16f, bsbg16h  = 5 - bsbg16h, bsbg16i  = 5 - bsbg16i) %>%
+  mutate(st_peace = (bsbg16d + bsbg16e + bsbg16f + bsbg16h + bsbg16i + bsbg15b + bsbg15c) / 7) %>%
+  mutate(st_peace = 5 - st_peace) %>%
+  select(idcntry, idstud, idschool, st_peace)
+
+psc_stat <- timss_bcg %>%
+  select(idcntry, idschool, bcbg15f:bcbg15j) %>%
+  mutate(bcbg15f = 5 - bcbg15f, bcbg15g = 5 - bcbg15g, bcbg15h = 5 - bcbg15h, 
+         bcbg15i = 5 - bcbg15i, bcbg15j = 5 - bcbg15j) %>%
+  mutate(sc_peace = (bcbg15f + bcbg15g + bcbg15h + bcbg15i + bcbg15j) / 5) %>%
+  select(idcntry, idschool, sc_peace)
+
+peace_stat <- full_join(psc_stat, pst_stat, by = c("idcntry", "idschool")) %>%
+  filter(!is.na(sc_peace) & !is.na(st_peace)) %>%
+  mutate(peace = (sc_peace + st_peace) / 2)
+
+peace_student_relation <- left_join(peace_stat, 
+                                st_score, 
+                                by = c("idcntry", "idstud")) %>%
+  select(idcntry, idstud, peace, score = oscore) %>%
+  filter(!is.na(peace))
+```
+
+
+  `cor.test()`'s results:
+```{r}
+cor.test(peace_student_relation$peace, 
+         peace_student_relation$score, 
+         alternative = "greater")
+
+```
+ 
+  By performing an ANOVA test we get the same results : 
+  
+```{r}
+fit <- peace_student_relation %>%
+  aov(peace ~ score, data = .)
+summary.aov(fit)
+```
+
+  Since the p-value is small we can conclude that a peaceful atmosphere has a positive impact on students' performance.
+  
+### preparing the data for the plots : 
+```{r}
+peace_student_sample <- peace_student_relation %>%
+  rowwise() %>%
+  sample_n(1000)
+
+peace_student_mean <- peace_student_relation %>%
+  mutate(peace = round(peace, 1)) %>%
+  group_by(peace) %>%
+  summarise(avg_score = mean(score))
+```
+
+  #Since the number of distinct peace values is high (close to 200) I've used a scatter plot instead of a boxplot.
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+ggplot() + 
+  geom_point(data = peace_student_sample, aes(x = peace, y = score),
+             color = "grey", 
+             alpha = 0.5, 
+             position = "jitter") +
+  scale_x_continuous() + 
+  scale_y_continuous() +
+  theme(legend.position = "none") +
+  geom_point(data = peace_student_mean, 
+             aes(x = peace, y = avg_score), 
+             color = "#009900") + 
+  geom_line(data = peace_student_mean, 
+            aes(x = peace, y = avg_score), 
+            color = "#009900", 
+            size = 0.9) + 
+  labs(title = "Students' Score Based on School Athmosphere's Peacefulness", 
+       subtitle = "ggplot2", 
+       x = "Level of Peacefulness", y = "Score")
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+
+peace_student_sample %>%
+  hchart(type = 'scatter', 
+         hcaes(x = peace, y = round(score, 1)), 
+         color = 'rgba(223, 159, 159, 0.4)', 
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = peace_student_mean, 
+                hcaes(x = peace, y = round(avg_score, 1)), 
+                type = 'line', 
+                name = 'average score', 
+                color = 'rgb(153, 51, 51)') %>%
+  hc_xAxis(title = list(text = "Schools' Level of Peacefulness")) %>%
+  hc_yAxis(title = list(text = "Score")) %>%
+  hc_title(text = "Students' Score Based on School Athmosphere's Peacefulness") %>%
+  hc_subtitle(text = "highcharter")
+```
+
+
+***
+
+### Q5: Evaluating The Effect of Teacher Education Level on Educational Performance
+
+```{r}
+teacher_education <- timss_bts %>%
+  select(idcntry:idlink, education = btbg04) %>%
+  filter(!is.na(education))
+
+tst_edu_relation <- left_join(teacher_education, 
+                                      st_score, 
+                                      by = c("idcntry", "idteach")) %>%
+  filter(matsubj != 1) %>%
+  select(idstud, 
+         idteach, 
+         idcntry, 
+         education, 
+         score = mscore) %>%
+  arrange(education) %>%
+  mutate(edulevel = ifelse(education == 7, "Doctor", 
+                            ifelse(education == 6, "Master's", 
+                                   ifelse(education == 5, "Bachelor’s", 
+                                          ifelse(education == 4, "Short-cycle tertiary", 
+                                                 ifelse(education == 3, "Post-secondary", 
+                                                        ifelse(education == 2, "Upper secondary", "Did not complete Upper secondary")))))))
+```
+
+
+  The p-value is small, therefor we can conclude that the teacher's education level has a positive impact on the student's performance.
+  
+```{r}
+fit <- tst_edu_relation %>%
+  aov(score ~ as.factor(education), data = .)
+
+summary.aov(fit)
+```
+
+
+### preparing the data for the plots:
+  
+  
+```{r}
+tst_edu_sample <- tst_edu_relation %>%
+  rowwise() %>%
+  sample_n(1000) %>%
+  arrange(education)
+
+tst_edu_sample$edulevel <- factor(tst_edu_sample$edulevel, 
+                                  levels = c("Doctor", "Master's", 
+                                             "Bachelor’s", "Short-cycle tertiary", 
+                                             "Post-secondary", "Upper secondary", 
+                                             "Did not complete Upper secondary"))
+tst_edu_mean <- tst_edu_relation %>%
+  group_by(edulevel, education) %>%
+  summarise(avg_score = mean(score)) %>%
+  arrange(education)
+
+tst_edu_mean$edulevel <- factor(tst_edu_mean$edulevel, 
+                                  levels = c("Doctor", "Master's", 
+                                             "Bachelor’s", "Short-cycle tertiary", 
+                                             "Post-secondary", "Upper secondary", 
+                                             "Did not complete Upper secondary"))
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+ggplot() + 
+  geom_point(data = tst_edu_sample, alpha = 0.25, 
+             color = "#0da7d7",
+             aes(x = edulevel, y = score)) + 
+  scale_x_discrete()+ 
+  scale_y_continuous() + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none", 
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+  geom_point(data = tst_edu_mean, aes(x = edulevel, y = avg_score), 
+              color = "#3528c7") + 
+  geom_line(data = tst_edu_mean, aes(x = edulevel, y = avg_score), 
+            color = "#3528c7", 
+            group = 1,
+            size = 0.9) + 
+  labs(title = "Students' Scores Based on Teachers' Level of Education",
+       subtitle = "ggplot2",
+       x = "Level of Education", y = "Score")
+
+```
+
+
+```{r}
+ggplot() + 
+  geom_boxplot(data = tst_edu_sample, 
+             aes(x = as.factor(edulevel), y = score, 
+                 fill = as.factor(edulevel))) + 
+  scale_fill_brewer(palette = "Accent") + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none", 
+        axis.text.x = element_text(hjust = 1, vjust = 1, angle = 45)) + 
+  labs(title = "Students' Scores Based on Teachers' Level of Education",
+       subtitle = "ggplot2",
+       x = "Level of Education", y = "Score")
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+tst_edu_sample %>%
+  hchart(type = 'scatter', 
+         hcaes(x = edulevel, y = round(score, 1)), 
+         color = 'rgba(13, 66, 180, 0.1)', 
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = tst_edu_mean, 
+                hcaes(x = edulevel, y = round(avg_score, 1)), 
+                type = 'line', 
+                name = 'average score', 
+                color = "#3528c7") %>%
+  hc_xAxis(title = list(text = "Teachers' Level of Education")) %>%
+  hc_yAxis(title = list(text = "Score")) %>%
+  hc_title(text = "Students' Scores Based on Teachers' Level of Education") %>%
+  hc_subtitle(text = "highcharter")
+```
+
+
+
+***
+
+### Q7: Nutrition and Students' Academic Performance.
+  
+    To view the relationship between these two, I have chosen fields from both the Student's and the School's questionnaire, though I have given the former more weight (since the school's providing of free lunch doesn't guarantee that the students will actually eat it :) )
+
+
+```{r}
+fho_stat <- timss_bsg %>%
+  select(idcntry, idstud, idschool, food_home = bsbg12)
+
+fst_relation <- left_join(fho_stat,
+                               st_score, 
+                               by = c("idstud", "idcntry")) %>%
+  select(idcntry, idstud, idschool = idschool.x, 
+         score = oscore, food_home) %>%
+  mutate(food_home = 5 - food_home)
+
+fsc_stat <- timss_bcg %>%
+  select(idcntry, idschool, bcbg06a, bcbg06b) %>%
+  mutate(food_school = (bcbg06a + bcbg06b) / 2) %>%
+  mutate(food_school = 4 - food_school) %>%
+  select(idcntry, idschool, food_school)
+
+fst_relation <- left_join(fst_relation, 
+                      fsc_stat, 
+                      by = c("idcntry", "idschool")) %>%
+  mutate(food_overall = (food_home * 3 + 2 * food_school) / 5) %>%
+  filter(!is.na(food_overall))
+
+```
+
+  Since the p-value is small we can assume that nutrition is important in student's performance.
+  
+```{r}
+fit <- fst_relation %>%
+  aov(score ~ food_overall, data = .)
+
+summary.aov(fit)
+```
+
+### preparing the data for the plots:
+```{r}
+fst_sample <- fst_relation %>%
+  rowwise() %>%
+  sample_n(1000)
+fst_mean <- fst_relation %>%
+  group_by(food_overall) %>%
+  summarise(avg_score = mean(score))
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+ggplot() + 
+  geom_point(data = fst_sample, alpha = 0.25, 
+             color = "#ff9999",
+             aes(x = food_overall, y = score)) + 
+  scale_x_continuous() + 
+  scale_y_continuous() + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none") + 
+  geom_line(data = fst_mean, aes(x = food_overall, y = avg_score), 
+            color = "#ff5c33", 
+            size = 0.9) + 
+  geom_point(data = fst_mean, aes(x = food_overall, y = avg_score, 
+                                        color = food_overall), 
+              color = "#cc5200") + 
+  geom_smooth(data = fst_sample, aes(x = food_overall, y = score), method = "lm", se = FALSE, alpha = 0.1) + 
+  labs(title = "Students' Scores Based on Nutrition",
+       subtitle = "ggplot2\nRed line is average score for each level of nutrition\nBlue line was drawn using geom_smooth",
+       x = "Nutrition State", y = "Score")
+```
+
+
+```{r}
+ggplot() + 
+  geom_boxplot(data = fst_sample, 
+             aes(x = as.factor(food_overall), y = score, 
+                 fill = as.factor(food_overall))) + 
+  scale_y_continuous() + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none") + 
+  labs(title = "Students' Scores Based on Nutrition",
+       subtitle = "ggplot2",
+       x = "Nutrition State", y = "Score")
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+fst_sample %>%
+  hchart(type = 'scatter', 
+         hcaes(x = food_overall, y = round(score, 1)), 
+         color = 'rgb(255, 230, 255)', 
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = fst_mean, 
+                hcaes(x = food_overall, y = round(avg_score, 1)), 
+                type = 'line', 
+                name = 'average score', 
+                color = 'rgb(179, 0, 179)') %>%
+  hc_xAxis(title = list(text = "Nutrition State")) %>%
+  hc_yAxis(title = list(text = "Score"))  %>%
+  hc_title(text = "Students' Scores Based on Nutrition") %>%
+  hc_subtitle(text = "highcharter")
+```
+
+
+***
+
+## Q9: Attendance Affects Achievement
+
+```{r}
+absent_stat <- timss_bsg %>%
+  select(idcntry, idstud, bsbg11) %>%
+  mutate(ID_unique = paste(idcntry, idstud))
+
+abst_relation <- left_join(absent_stat, 
+                                 st_score, 
+                                 by = c("idcntry", "idstud")) %>% 
+  select(idcntry, idstud, score = oscore, absent = bsbg11) %>%
+  filter(!is.na(absent)) %>%
+  arrange(absent) %>%
+  mutate(abslevel = ifelse(absent == 1,"Once a Week",
+                         ifelse(absent == 2,"Once Every Two Week",
+                                ifelse(absent == 3, "Once a Month","Never"))))
+
+```
+  Since the p-value is small, we can assume the above statement is true.
+
+```{r}
+fit <- abst_relation %>%
+  aov(score ~ as.factor(absent), data = .)
+
+summary.aov(fit)
+```
+
+### preparing the data for the plots:
+
+```{r}
+abst_sample <- abst_relation %>%
+  rowwise() %>%
+  sample_n(1000)
+
+abst_sample$abslevel <- factor(abst_sample$abslevel, 
+                                  levels = c("Once a Week","Once Every Two Week","Once a Month","Never"))
+
+abst_mean <- abst_relation %>%
+  group_by(absent, abslevel) %>%
+  summarise(avg_score = mean(score))
+
+abst_mean$abslevel <- factor(abst_mean$abslevel, 
+                                  levels = c("Once a Week","Once Every Two Week","Once a Month","Never"))
+
+```
+> <p> 
+  ggplot2:
+</p>
+
+```{r, warning = FALSE}
+ggplot() + 
+  geom_point(data = abst_sample, alpha = 0.75, 
+             aes(x = abslevel, y = score, 
+                 color = abslevel), 
+             position = "jitter") +  
+  scale_y_continuous() +
+  scale_color_brewer(palette = 'YlOrRd') + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none") + 
+  geom_line(data = abst_mean, aes(x = abslevel, y = avg_score), 
+            color = "#009933", 
+            size = 1, 
+            group = 1) + 
+  geom_point(data = abst_mean, aes(x = abslevel, y = avg_score), 
+              color = "#009933") + 
+  labs(title = "Students' Scores Based on Absenteeism",
+       subtitle = "ggplot2",
+       x = "Level of Absenteeism", y = "Score")
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+abst_sample %>%
+  hchart(type = 'scatter', 
+         hcaes(x = absent, y = round(score, 1)), 
+         color = 'rgb(255, 230, 255)', 
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = abst_mean, 
+                hcaes(x = absent, y = round(avg_score, 1)), 
+                type = 'line', 
+                name = 'average score', 
+                color = 'rgb(179, 0, 179)') %>%
+  hc_xAxis(title = list(text = "Level of Absenteeism")) %>%
+  hc_yAxis(title = list(text = "Score"))  %>%
+  hc_title(text = "Students' Scores Based on Absenteeism") %>%
+  hc_subtitle(text = "highcharter")
+```
+
+***
+
+# 3 Statements And Their Proof
+
+## S1: Interest In Math Results in Better Scores.
+
+  To prove this hypothesis, I have chosen part a and e through i of question 17 of the Student's Questionnaire. The null hypothesis is that each group's performance is the same. After using the ANOVA test, since the p-value is very small, we can conclude that interest in math results in better scores.
+  
+  
+```{r}
+mint_st <- timss_bsg %>%
+  select(idcntry, idstud, idschool, bsbm17a, bsbm17e:bsbm17i) %>%
+  mutate(interest = (bsbm17a + bsbm17e + bsbm17f + bsbm17g + bsbm17h + bsbm17i) / 6) %>%
+  mutate(interest = 5 - interest) %>%
+  select(idcntry, idstud, interest)
+
+int_st_relation <- left_join(mint_st, st_score, by = c("idcntry",  "idstud")) %>%
+  select(idcntry, idstud, interest, score = mscore) %>%
+  filter(!is.na(interest)) %>%
+  filter(!is.na(score))
+
+
+```
+
+```{r}
+
+fit <- int_st_relation %>%
+  aov(score ~ interest, data = .)
+
+summary.aov(fit)
+
+```
+
+```{r}
+int_sample <- int_st_relation %>%
+  rowwise() %>%
+  sample_n(1000)
+
+int_mean <- int_st_relation %>%
+  group_by(interest) %>%
+  summarise(avg_score = mean(score))
+```
+
+```{r}
+interestmean <- mean(int_sample$interest, na.rm = TRUE)
+scoremean <- mean(int_sample$score, na.rm = TRUE)
+
+int_sample <- int_sample %>%
+  mutate(unusual = ifelse(interest < interestmean & score > scoremean, 
+                          "Higher Than Average Score, But Lower Than Average Interest", "Other"))
+
+ggplot() + 
+  geom_point(data = int_sample, 
+             alpha = 0.4, 
+             aes(x = interest, 
+                 y = score, 
+                 color = unusual), 
+             position = "jitter") + 
+  scale_x_continuous() + 
+  scale_y_continuous() + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none") +
+  geom_line(data = int_mean, aes(x = interest, y = avg_score), 
+            color = "deeppink3", 
+            size = 0.9) +  
+  geom_point(data = int_mean, aes(x = interest, y = avg_score), 
+              color = "deeppink4") + 
+  labs(title = "Students' Scores Based on Their Interest In Math",
+       subtitle = "ggplot2\nThe blue dots are student who's interest in Math was lower than average, but their score was higher",
+       x = "Level of Interest", y = "Score")
+```
+
+```{r}
+int_sample %>%
+  hchart(type = 'scatter',
+         hcaes(x = interest, y = score, group = unusual),
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = int_mean, 
+                hcaes(x = round(interest, 1), y = round(avg_score, 2)), 
+                type = 'line', 
+                name = 'average score', 
+                color = "purple") %>%
+  hc_yAxis(title = list(text = "Score")) %>%
+  hc_xAxis(title = list(text = "Level of Interest")) %>%
+  hc_title(text = "Students' Scores Based on Their Interest In Math") %>%
+  hc_subtitle(text = "highcharter")
+```
+
+  
+## S2: Do Books Really Matter? 
+
+```{r}
+sc_library <- timss_bcg %>%
+  filter(!is.na(bcbg12)) %>%
+  mutate(`Has Library` = ifelse(bcbg12 == 1, "Yes", "No")) %>%
+  select(idcntry, idschool, `Has Library`) 
+
+st_lib_relation <- left_join(st_score, sc_library, 
+                             by = c("idcntry", "idschool")) %>%
+  select(idcntry, idschool, `Has Library`, score = oscore) %>%
+  filter(!is.na(`Has Library`))
+
+```
+
+
+```{r}
+t.test(score~`Has Library`, data = st_lib_relation, 
+       alternative = "less")
+```
+
+   Based on the results of the above t-test we can reject our null hypothesis (average score of students attending schools that have libraries is the same as students attending schools that do not). The same can be concluded from the charts below: 
+   
+```{r}
+st_lib_relation %>% 
+  group_by(`Has Library`) %>% 
+  summarise(avg_score = mean(score) %>% round(3)) %>% 
+  hchart("column",
+         hcaes(x = `Has Library`, y = avg_score), name = "score") %>% 
+  hc_add_theme(hc_theme_google())
+
+```
+
+```{r}
+ggplot(st_lib_relation, aes(x = score, fill = `Has Library`)) +
+  geom_density(alpha= 0.75) + 
+  scale_fill_brewer(palette = "Set1")
+```
+
+## S3: The Sky's The Limit!
+
+  In this part, I have tested the null hypothesis that teacher's and parent's expectation does not affect student's performance(each group has the same mean), against the alternative hypothesis that is has a postitive impact. Since the calculated p-value is small, we can reject the null hypothesis. 
+
+```{r}
+expectation <- timss_bcg %>%
+  select(idcntry, idschool, texp = bcbg14c, pexp = bcbg14h) %>%
+  mutate(exp = (texp + pexp) / 2) %>%
+  filter(!is.na(exp) & !is.na(pexp) & !is.na(exp)) %>%
+  mutate(exp = 5- exp, texp = 5 - texp, pexp = 5 - pexp)
+
+e_st_relation <- left_join(expectation, st_score, 
+                           by = c("idcntry", "idschool")) %>%
+  select(score = oscore, idschool, idcntry, idstud, 
+         pexp, texp, exp)
+```
+
+
+```{r}
+fit <- e_st_relation %>%
+  aov(score ~ as.factor(exp), data = .)
+
+summary.aov(fit)
+```
+
+```{r}
+exp_mean <- e_st_relation %>%
+  group_by(exp) %>%
+  summarise(avg_score = mean(score))
+
+exp_sample <- rbind(e_st_relation %>%
+                    mutate(which = "Teacher") %>%
+                    select(idcntry, idstud, score, exp = texp, which) %>%
+                      sample_n(500), 
+                    e_st_relation %>% 
+                      mutate(which = "Parent") %>%
+                    select(idcntry, idstud, score, exp = pexp, which) %>%
+                      sample_n(500))
+
+exp_mean <- rbind(e_st_relation %>%
+                        mutate(which = "Teacher") %>%
+                        select(idcntry, idstud, score, exp = texp, which),
+                      e_st_relation %>%
+                        mutate(which = "Parent") %>%
+                        select(idcntry, idstud, score, exp = pexp, which)) %>%
+  group_by(exp, which) %>%
+  summarise(avg_score = mean(score))
+```
+
+
+```{r}
+ggplot() + 
+  geom_point(data = exp_sample, 
+             alpha = 0.2, 
+             aes(x = exp, 
+                 y = score, 
+                 color = which)) + 
+  scale_x_continuous() + 
+  scale_y_continuous() + 
+  scale_color_brewer(palette = "Dark2") +
+  theme_light() + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none") + 
+  geom_point(data = exp_mean, aes(x = exp, y = avg_score, color = which)) + 
+  geom_line(data = exp_mean, aes(x = exp, y = avg_score, color = which),
+            size = 0.9) + 
+  labs(title = "Students' Scores Based on Expectation",
+       subtitle = "ggplot2",
+       x = "Expectation", y = "Score") + 
+  facet_wrap(~which)
+```
+
+```{r}
+ggplot() + 
+  geom_boxplot(data = exp_sample, 
+             aes(x = as.factor(exp), 
+                 y = score, 
+                 fill = as.factor(exp))) + 
+  scale_y_continuous() + 
+  scale_fill_brewer(palette = 17) + 
+  theme_linedraw() + 
+  theme(legend.title =  element_blank(), 
+        legend.position = "none") + 
+  labs(title = "Students' Scores Based on Expectation",
+       subtitle = "ggplot2",
+       x = "Average of Teacher and Parent Expectation", y = "Score") + 
+  facet_wrap(~which)
+```
+
+
+```{r}
+exp_sample %>%
+  hchart(type = 'scatter',
+         hcaes(x = exp, y = score),
+         enableMouseTracking = FALSE) %>%
+  hc_add_series(data = e_st_relation %>%
+                  group_by(exp) %>%
+                  summarise(avg_score = mean(score)), 
+                hcaes(x = round(exp, 1), y = round(avg_score, 1)), 
+                type = 'line', 
+                name = 'average score', 
+                color = "maroon") %>%
+  hc_yAxis(title = list(text = "Score")) %>%
+  hc_xAxis(title = list(text = "Average of Expectation")) %>%
+  hc_title(text = "Students' Score Based on Parents' and Teachers' Expectation") %>%
+  hc_subtitle(text = "highcharter")
+```
+

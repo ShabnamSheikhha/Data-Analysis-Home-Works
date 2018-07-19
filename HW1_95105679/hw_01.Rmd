@@ -1,0 +1,477 @@
+---
+title: "first week: Introduction to R and Rstudio"
+author: "Shabnam Sheikhha (95105679) "
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<div align="center">
+<img  src="images/Rman.jpeg"  align = 'center'>
+</div>
+
+
+<h1 dir="RTL"> 
+تمرین سری اول: چند مساله
+</h1>
+
+<p dir="RTL"> 
+به سوال های زیر را از طریق نوشتن یک کد پاسخ دهید.
+</p>
+
+***
+
+<h2 dir="RTL">
+ماتریس دوستانه
+</h2>
+
+<p dir="RTL">
+یک ماتریس
+$(n,n)$
+که شامل اعداد 
+$1,2,...,n^2$
+است. دوستانه نامیده میشود اگر مجموع سطرها با مجموع ستون های آن برابر شوند. مثال هایی از ماتریس های دوستانه از بعد ۴و۵و۶ ارایه دهید. 
+</p>
+
+<h2 dir="RTL">
+پاسخ:
+</h2>
+
+<p dir="RTL">
+ابتدا پکیج `magic` را دانلود و نصب میکنیم. سپس با استفاده از تابع `magic()` آن, مربع های جادویی با ابعاد مدنظر را تولید میکنیم. 
+</p>
+
+```{r}
+library(magic)
+```
+
+```{r}
+magic(4)
+magic(5)
+magic(6)
+```
+
+
+
+***
+
+<h2 dir="RTL">
+جایشگت  عجیب
+</h2>
+
+<p dir="RTL">
+جایگشت هایی از اعداد ۱ تا ۱۳ را پیدا کنید که در شرایط زیر صدق کنند:
+</p>
+
+$$ a = (a_1, a_2,..., a_{13})$$
+$$\frac{a_1}{a_2+a_3} = \frac{a_2+a_3}{a_3+a_4+a_5}<1$$
+$$\frac{a_6}{a_6+a_7}= \frac{a_6+a_7}{a_7+a_8+a_9} = \frac{a_7+a_8+a_9}{a_5+a_9+a_{10}} <1$$
+
+$$\frac{a_{11}+a_{12}}{a_{12}+a_{13}}=\frac{a_{12}+a_{13}}{a_{13}+a_{10}}<1$$
+
+<h2 dir="RTL">
+پاسخ:
+</h2>
+
+<p dir="RTL">
+شرط ها را یکی یکی چک میکنیم. از شرط اول شروع میکنیم. ابتدا کلیه ی جایگشت هایی ۵ تایی از اعداد ۱ تا ۱۳ را که در شرط اول صدق کنند در بردار 
+`answer` میریزیم. <br> در مرحله ی بعد, جهت سریع تر شدن فرآیند, شرط سوم را به جای شرط دوم چک میکنیم. به ازای هر سری اعداد به دست آمده در مرحله ی قبل,  کلیه ی جایگشت های ۴تایی از ارقام ۱ تا ۱۳ را که شامل این ارقام نباشند و درشرط سوم صدق کنند را مجدد در بردار `answer` میریزیم. <br> همین فرآیند را برای شرط سوم نیز تکرار میکنیم. در نهایت به یک جواب میرسیم. <br> برای به دست آوردن جایگشت ها میتوانستیم به جای استفاده از حلقه های تودرتو از تابع `permutations()` واقع در پکیج `gtools` استفاده کنیم, ولی روش استفاده شده سریع تر به جواب میرسد.
+</p>
+
+```{r}
+#step 1
+answer <- NULL
+nums <- 1:13
+for(a1 in nums){
+  for(a2 in nums){
+    if(a1 != a2){
+      for(a3 in nums){
+        if(a1 != a3 & a2 != a3){
+          for(a4 in nums){
+            if(a1 != a4 & a2 != a4 & a3 != a4){
+              for(a5 in nums){
+                if(a1 != a5 & a2 != a5 & a3 != a5 & a4 != a5){
+                  if(a1 * (a3 + a4 + a5) == (a2 + a3) ^ 2){
+                    if(a1 / (a2 + a3) < 1){
+                      answer <- rbind(answer, cbind(a1, a2, a3, a4, a5, 
+                                                    NA, NA, NA, NA, 
+                                                    NA, NA, NA, NA))
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+```{r}
+#step 2
+n <- nrow(answer)
+for(i in 1:n){
+  p <- answer[i, ]
+  nums <- 1:13
+  nums <- nums[which(! nums %in% p)]
+  for(a10 in nums){
+    for(a11 in nums){
+      if(a11 != a10){
+        for(a12 in nums ){
+          if(a12 != a10 & a12 != a11){
+            for(a13 in nums ){
+              if(a13 != a10 & a13 != a11 & a13 != a12){
+                if((a11 + a12) * (a10 + a13) == (a12 + a13) ^ 2){
+                  if((a11 + a12) / (a12 + a13) < 1){
+                    answer <- rbind(answer, cbind(p[1], p[2], p[3], p[4], p[5], 
+                                                  NA, NA, NA, NA, 
+                                                  a10, a11, a12, a13))
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+```{r}
+#step 3
+answer <- unname(answer)
+answer <- answer[-c(1:n), ] #delete the previous vectors with only 5 elements
+n <- nrow(answer)
+for(i in 1:n){
+  p <- answer[i, ]
+  nums <- 1:13
+  a5 <- p[5]
+  a10 <- p[10]
+  nums <- 1:13
+  nums <- nums[which(! nums %in% p)]
+  for(a6 in nums){
+    for(a7 in nums){
+      if(a6 != a7){
+        for(a8 in nums){
+          if(a8 != a6 & a8 != a7){
+            for(a9 in nums ){
+              if (a9 != a6 & a9 != a8 & a9 != a7){
+                if(a6 * (a7 + a8 + a9) == (a6 + a7) ^ 2){
+                  if(a6 * (a5 + a9 + a10) == (a6 + a7) * (a7 + a8 + a9)){
+                    answer <- rbind(answer, cbind(p[1], p[2], p[3], p[4], p[5], 
+                                                  a6, a7, a8, a9, 
+                                                  p[10], p[11], p[12], p[13]))
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+```{r}
+#finally
+answer <- unname(answer)
+answer <- answer[-c(1:n), ] #delete the vectors before step 3 with less than 13 elements
+show(answer)
+```
+
+***
+
+<h2 dir="RTL">
+مچ گیری
+</h2>
+
+<h3 dir="RTL">
+روند کلی حل مسئله:
+</h3>
+
+<p dir="RTL">
+روند کلیای که برای حل این مسئله پیش گرفته ایم این است که ابتدا همهی جایگشتهای n تایی از اعداد صفر و یک (به ترتیب, نشاندهندهی راستگو و دروغگو) را تولید میکنیم. سپس هر کدام از این ها را به تابعی پاس میدهیم که خروجی آن boolean ی برای تعیین معتبر یا نامعتبر بودن جایگشت موردنظر است. تعداد دروغگوهای جایگشتهای معتبر را میشماریم. از هر تعداد دروغگو, یک جایگشت نمونه را در ماتریسی ذخیره میکنیم. بدین صورت تعداد ممکن برای دروغگوها را به دست میآوریم. 
+</p>
+
+<h3 dir="RTL">
+الف:
+</h3>
+
+<p dir="RTL">
+میزگردی شامل ۱۶ فرد دروغگو و راستگو تشکیل شده است. هر کسی ادعا میکند دو فرد کنار دستی او دروغگو هستند. چند نفر دروغگو در جمع وجود دارد؟
+</p>
+
+<h2 dir="RTL">
+پاسخ:
+</h2>
+
+<p dir="RTL">
+تابع `is_valid()` به عنوان خروجی متغیر boolean ی که نشاندهندهی اعتبار یا عدم اعتبار جایگشت موردنظر است بدین صورت تعریف شده است: روی هرکدام از اعضای جایگشت موردنظر, تابع `valid_liar()` یا `valid_nonliar()` را بسته به اینکه برابر با صفر باشد یا یک صدا میزند. اگر به ازای همهی اعضا خروجیها `TRUE` شد, این یک جایگشت معتبر و در غیر این صورت جایگشتی نامعتبر است. 
+</p>
+
+<p dir="RTL">
+بدنهی دو تابع `valid_liar()` و `valid_nonliar()`
+</p>
+
+```{r}
+valid_liar <- function(next_p, prev_p){
+  return(!(next_p == 0 & prev_p == 0))
+}
+
+valid_nonliar <- function(next_p, prev_p){
+  return(next_p == 0 & prev_p == 0)
+}
+```
+
+<p dir="RTL">
+بدنه ی تابع `is_valid()`: 
+</p>
+
+```{r}
+is_valid <- function(permutation){
+  n <- length(permutation)
+  for(i in 1:n){
+    nextperson_index <- i + 1
+    prevperson_index <- i - 1
+    if(i == 1){
+      prevperson_index <- n
+    }
+    if(i == n){
+      nextperson_index <- 1
+    }
+    prevperson <- permutation[prevperson_index]
+    nextperson <- permutation[nextperson_index]
+    if(permutation[i] == 0){
+      if(!valid_liar(prevperson, nextperson)){
+        return(FALSE)
+      }
+    }
+    if(permutation[i] == 1){
+      if(!valid_nonliar(prevperson, nextperson)){
+        return(FALSE)
+      }
+    }
+  }
+  return(TRUE)
+}
+```
+
+<p dir="RTL">
+محاسبه ی جایگشت های معتبر و تعداد دروغگوها:
+</p>
+
+```{r}
+library(gtools)
+round_table <- permutations(n = 2, r = 16, v = c(0, 1), repeats.allowed = TRUE)
+n <- nrow(round_table)
+
+liar_nums <- NULL
+liars <- NULL
+
+for(i in 1:n){
+  p <- round_table[i, ] #permutations we want to test
+  if(is_valid(p)){
+    if(!sum(p) %in% liar_nums){ 
+      liar_nums <- cbind(liar_nums, sum(p))
+      liars <- rbind(liars, p)
+    }
+  }
+}
+```
+
+```{r}
+show(liar_nums)
+show(liars)
+```
+
+
+<h3 dir="RTL">
+ب:
+</h3>
+
+<p dir="RTL">
+میزگرد دیگری شامل ۱۲ نفر فرد راستگو و دروغگو تشکیل شده به طوری که هر فرد ادعا میکند از میان دو نفر کنار دستی یک نفر راستگو و یک نفر دروغگو هستند. چند نفر دروغگو در جمع وجود دارد؟
+</p>
+
+<h2 dir="RTL">
+پاسخ:
+</h2>
+
+<p dir="RTL">
+طبق توضیحات داده شده در مورد الف, عمل میکنیم.
+</p>
+
+<p dir="RTL">
+بدنهی دو تابع `valid_liar()` و `valid_nonliar()`
+</p>
+
+```{r}
+valid_liar <- function(next_p, prev_p){
+  return(!xor(next_p, prev_p))
+}
+
+valid_nonliar <- function(next_p, prev_p){
+  return(xor(next_p, prev_p))
+}
+```
+
+
+<p dir="RTL">
+بدنه ی تابع `is_valid()` همانند قسمت الف است.
+</p>
+
+<p dir="RTL">
+محاسبه ی جایگشت های معتبر و تعداد دروغگوها (همانند قسمت الف است با این تفاوت که تعداد اعضا برابر با ۱۲ است. )
+</p>
+
+```{r}
+library(gtools)
+round_table <- permutations(n = 2, r = 12, v = c(0, 1), repeats.allowed = TRUE)
+n <- nrow(round_table)
+
+liar_nums <- NULL
+liars <- NULL
+
+for(i in 1:n){
+  p <- round_table[i, ] #permutations we want to test
+  if(is_valid(p)){
+    if(!sum(p) %in% liar_nums){ 
+      liar_nums <- cbind(liar_nums, sum(p))
+      liars <- rbind(liars, p)
+    }
+  }
+}
+```
+
+
+```{r}
+show(liar_nums)
+show(liars)
+```
+
+
+<h3 dir="RTL">
+ج:
+</h3>
+
+<p dir="RTL">
+این دفعه میزگردی هشت نفره تشکیل شده به گونه ایی که چهار نفر ادعا میکنند از از میان دو نفر کنار دستی یکی دروغگو و دیگری راستگوست و چهار نفر دیگر اعلام میکنند که هر دو فرد کنار دستی آنها دروغگو هستند. چند نفر دروغگو در میان جمع است؟
+</p>
+
+<h2 dir="RTL">
+پاسخ:
+</h2>
+
+<p dir="RTL">
+برای حل این قسمت اندکی متفاوت با دو قسمت قبل عمل میکنیم. دو تابع تعریف میکنیم که به عنوان ورودی بردار یک جایگشت را گرفته و خروجی اندیس افرادی که میتوانند عقیده ی دوم یا اول را داشته باشند برمیگرداند. روی تک تک جایگشت ها این دو تابع را صدا میزنیم. بردارهای خروجی باید به گونه ای باشند که همه ی اعداد ۱ تا ۸ را داشته باشند(به عبارتی, کسی بدون عقیده نباشد). در این صورت, جایگشت تولید شده, جایگشتی معتبر از چینش این افراد است و تعداد دروغگوهای آن را محاسبه میکنیم. 
+</p>
+
+<p dir="RTL">
+بدنه ی دو تابع `calc_first_opinion()` و `calc_second_opinion()`:
+</p>
+
+```{r}
+calc_first_opinion <- function(permutation){
+  n <- length(permutation)
+  people <- NULL
+  for(i in 1:n){
+    nextperson_index <- i + 1
+    prevperson_index <- i - 1
+    if(i == 1){
+      prevperson_index <- n
+    }
+    if(i == n){
+      nextperson_index <- 1
+    }
+    prevperson <- permutation[prevperson_index]
+    nextperson <- permutation[nextperson_index]
+    
+    if(permutation[i] == 1){
+      if(xor(prevperson, nextperson)){
+        people <- cbind(people, c(i))
+      }
+    }else{
+      if(!xor(prevperson, nextperson)){
+        people <- cbind(people, c(i))
+      }
+    }
+  }
+  return(people)
+}
+
+calc_second_opinion <- function(permutation){
+  n <- length(permutation)
+  people <- c()
+  for(i in 1:n){
+    nextperson_index <- i + 1
+    prevperson_index <- i - 1
+    if(i == 1){
+      prevperson_index <- n
+    }
+    if(i == n){
+      nextperson_index <- 1
+    }
+    prevperson <- permutation[prevperson_index]
+    nextperson <- permutation[nextperson_index]
+    
+    if(permutation[i] == 1){
+      if((prevperson == 0 & nextperson == 0)){
+        people <- cbind(people, c(i))
+      }
+    }else{
+      if(!(prevperson == 0 & nextperson == 0 )){
+        people <- cbind(people, c(i))
+      }
+    }
+  }
+  return(people)
+}
+
+
+```
+
+<p dir="RTL">
+محاسبهی جایگشت های معتبر و تعداد دروغگوها:
+</p>
+
+```{r}
+round_table <- permutations(n = 2, r = 8, v = c(0, 1), repeats.allowed = TRUE)
+n <- nrow(round_table)
+
+liar_nums <- NULL
+liars <- NULL
+
+
+for(i in 1:n){
+  p <- round_table[i, ] #permutations we want to test
+  second_op <- calc_second_opinion(p)
+  first_op <- calc_first_opinion(p)
+  musthave <- 1:8
+  donthave <- musthave[which(!(musthave %in% second_op) & 
+                               !(musthave %in% first_op))]
+  if(length(donthave) == 0){
+    if(length(second_op) >= 4 & length(first_op) >= 4){
+      if(! sum(p) %in% liar_nums){ 
+      liar_nums <- cbind(liar_nums, sum(p))
+      liars <- rbind(liars, p)
+      }
+    }
+  }
+}
+```
+
+```{r}
+show(liar_nums)
+show(liars)
+```
+

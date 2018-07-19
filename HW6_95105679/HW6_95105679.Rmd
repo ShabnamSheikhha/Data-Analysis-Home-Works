@@ -1,0 +1,695 @@
+---
+title: 'Sixth Week: Linear Models'
+subtitle: "House price prediction"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 15,fig.height = 15,fig.align ="center", 
+                      fig.retina=1)
+```
+
+
+## loading the data and the necessary libraries : 
+
+```{r cars}
+library(readr)
+library(lawstat)
+library(tidyverse)
+library(highcharter)
+library(reshape2)
+library(scales)
+library(car)
+library(ggthemr)
+library(Hmisc)
+library(corrplot)
+library(gridExtra)
+train <- read.csv("/Users/deyapple/Documents/Courses/Term04/DA/house/train.csv", 
+                  stringsAsFactors = FALSE) %>%
+  mutate(houseAge = -1 * (YearBuilt - YrSold), 
+         grAge = -1 * (GarageYrBlt - YrSold))
+test <- read.csv("/Users/deyapple/Documents/Courses/Term04/DA/house/test.csv", 
+                 stringsAsFactors = FALSE) %>%
+  mutate(houseAge = -1 * (YearBuilt - YrSold), 
+         grAge = -1 * (GarageYrBlt - YrSold))
+ggthemr('earth', type = 'inner')
+```
+
+#Q1 :
+
+### Choosing quantative Variables
+At this early stage, I have only considered quantitive variables. In the later sections I will add a few qualitative predictors to the model as well. 
+Some variables are masked as quantitative, when in nature they are actually qualitative. I have removed these variables too, such as Month Sold. 
+
+
+```{r}
+quan.df <- train %>%
+  select_if(is.numeric) %>%
+  select(-YearBuilt, -YrSold, -GarageYrBlt, -MoSold, -MSSubClass, -Id)
+```
+
+### Correlation Matrix
+
+Next, I have constructed a correlation matrix from which, using `ggplot2` I have drawn a Heatmap. (I have removed the code part to keep the document tidy)
+
+```{r, echo=FALSE}
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  = (cormat)[ut],
+    p = pmat[ut]
+  )
+}
+
+quan.cor_and_p <- rcorr(as.matrix(quan.df))
+correlations <- quan.cor_and_p$r
+quan.cor.melt = melt(correlations)
+ggplot(quan.cor.melt, aes(Var1, Var2)) + 
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(fill = value, label = round(value, 2)), size = 3.75, color = "black") +
+  scale_fill_gradient2(low = muted("darkred"), 
+                       mid = "white", 
+                       high = muted("midnightblue"), 
+                       midpoint = 0) +
+  theme(panel.grid.major.x=element_blank(), 
+        panel.grid.minor.x=element_blank(), 
+        panel.grid.major.y=element_blank(), 
+        panel.grid.minor.y=element_blank(),
+        panel.background=element_rect(fill="white"),
+        axis.text.x = element_text(angle=90, hjust = 1,vjust=1,size = 10,face = "bold"),
+        plot.title = element_text(size=20,face="bold"),
+        axis.text.y = element_text(size = 10,face = "bold")) + 
+  ggtitle("Correlation Plot") + 
+  theme(legend.title=element_text(face="bold", size=14)) + 
+  scale_x_discrete(name="") +
+  scale_y_discrete(name="") +
+  labs(fill="Corr. Coef.")
+```
+
+clearer visualization :  
+  
+    
+    
+```{r, echo = FALSE}
+corrplot(
+  as.matrix(correlations),
+  type = "lower",
+  order = "hclust",
+  tl.col = "black",
+  tl.srt = 45
+)
+```
+
+### Correlation test 
+
+Next I have made a dataframe consisting of the correlations and their $p-values$ under the null hypothesis that the true correlation is zero. 
+
+```{r}
+pvalues <- quan.cor_and_p$P
+
+cor_and_p <- flattenCorrMatrix(correlations, pvalues)
+
+cor_and_p %>%
+  filter(cor < 1) %>%
+  filter(column == "SalePrice") %>%
+  arrange(desc(cor)) %>%
+  head(50)
+```
+
+### Top 10 Highest Correlations
+
+Finally I have selected the variables with the highest correlations. For now, these will be our predictors. 
+
+```{r}
+top10 <- quan.cor.melt %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice") %>%
+  arrange(desc(value)) %>%
+  head(10)
+```
+
+In the data frame from the last section, if we search for the $p-value$ of these variables, we will see that the $p-values$ are very low, which results in the rejection of the null hypothesis : There is no correlation between SalePrice and this variable.
+
+#Q2 : 
+
+### Drawing The Scatter Plot
+
+Selecting the top 10 predictors from the data frame: 
+
+```{r}
+quan.predictors <- top10 %>%
+  select(Var2) %>%
+  unname() %>%
+  unlist() %>%
+  as.character()
+var.nm <- c(quan.predictors, c("SalePrice"))
+quan.df.sel <- quan.df %>%
+  select(one_of(var.nm))
+```
+
+Draw two by two scatter plot : 
+```{r}
+scatterplotMatrix(quan.df.sel)
+```
+
+### Determining Colinearity
+
+Assembling the correlation matrix : 
+
+(Again, I have'nt included the code in order to keep the document tidy)
+
+```{r, echo = FALSE}
+top10.paired <- quan.cor.melt %>%
+  filter(Var1 %in% var.nm) %>%
+  filter(Var1 != "SalePrice") %>%
+  filter(Var2 %in% var.nm) %>%
+  filter(Var2 != "SalePrice") 
+ggplot(top10.paired, aes(Var1, Var2)) + 
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(fill = value, label = round(value, 2)), size = 5, color = "black") +
+  scale_fill_gradient2(low = muted("darkred"), 
+                       mid = "white", 
+                       high = muted("midnightblue"), 
+                       midpoint = 0) +
+  theme(panel.grid.major.x=element_blank(), 
+        panel.grid.minor.x=element_blank(), 
+        panel.grid.major.y=element_blank(), 
+        panel.grid.minor.y=element_blank(),
+        panel.background=element_rect(fill="white"),
+        axis.text.x = element_text(angle=90, hjust = 1,vjust=1,size = 12,face = "bold"),
+        plot.title = element_text(size=20,face="bold"),
+        axis.text.y = element_text(size = 12,face = "bold")) + 
+  ggtitle("Correlation Plot") + 
+  theme(legend.title=element_text(face="bold", size=14)) + 
+  scale_x_discrete(name="") +
+  scale_y_discrete(name="") +
+  labs(fill="Corr. Coef.")
+```
+
+As we can see from the correlation matrix and the bottom row of the scatter plot matrix, 
+these sets of variables are colinear : 
+<li> X1stFlrSF and TotalBsmtSF </li>
+<li> GrLivArea and TotalRmsAbvGrd </li>
+<li> GarageArea and GarageCars </li>
+
+It makes sense for these variables to be colinear. Without any statistical knowledge, it is intuitively obvious that an increase in GarageCars would result in an increase in GarageArea. 
+Later on, if any of these predictors still exist in the model, I will use the `vif()` function to determine whether they are colinear or not. 
+
+#Q3:
+```{r}
+quan.df.reg <- lm(SalePrice ~ GarageArea + YearRemodAdd +
+                    GarageCars + TotRmsAbvGrd + FullBath + 
+                    GrLivArea + X1stFlrSF + 
+                    TotalBsmtSF + OverallQual + MasVnrArea, data = quan.df, 
+                  na.action = na.exclude)
+quan.df.reg.sum <- summary(quan.df.reg)
+quan.df.reg.sum
+```
+
+#Q4: 
+
+Performing the Prediction: 
+
+```{r}
+
+quan.df.pred <- quan.df %>%
+  mutate(SalePricePred = fitted(quan.df.reg, type = "response"), 
+         SalePriceError = residuals.lm(quan.df.reg)) 
+```
+
+Predicted Price Vs. Actual Price: 
+
+```{r}
+
+one.pa <- ggplot(quan.df.pred, aes(x = SalePrice, y = SalePricePred)) + 
+  geom_point() + 
+  geom_smooth() 
+one.pa
+
+quan.df.predh <- quan.df.pred %>%
+  filter(!is.na(SalePrice)) %>%
+  filter(!is.na(SalePricePred))
+hchart(type = "area", density(quan.df.predh$SalePrice), name = "Actual") %>%
+  hc_add_series(type = "area", data = density(quan.df.predh$SalePricePred), name = "Prediction") %>%
+  hc_add_theme(hc_theme_db())
+```
+
+As we can see, the predicted price and the actual price are very close in some instances. That is, the scatter plot resembles the line $x = y$ (the bisector of the first and third segment)
+
+Error Density Plot: 
+
+```{r}
+one.ed <- ggplot(quan.df.pred) + 
+  geom_histogram(aes(y = ..density.., x = SalePriceError), alpha = 0.5, bins = 150) + 
+  geom_density(aes(x = SalePriceError), size = 0.5) 
+
+one.ed
+```
+As we can see the error chart is right-skewed bell shape, indicating a somewhat normal distribution for the error.
+ 
+#Q5:
+
+The RSE (Residual Standard Error) of the model is computed as below : 
+$RSE = \sqrt{\frac{RSS}{n - 2}}$
+where RSS is the Residual Sum of Squares of the model. Since RSE is based on the scale of Y (the response variable) it does not give a clear view on whether the model is a good fit or not. 
+In order to test whether the model is a good fit for the data, we use the $R-Squared$ value, which is computed as follows: 
+$R^2= \frac{TSS - RSS}{TSS}$ where $TSS = \Sigma{(y_i - \bar{y})^2}$ is the Total Sum of Squares. 
+TSS measures the total variance in Y (the response variable) before performing the regression. RSS measures the amount of variability that is left unexplained by the model after the regression if performed. therefor $R^2$ is a measure between 1 and 0 indicating how much of the variability in the response is explained by our regression model. It differs from RSE since it is always between 1 and 0 and therefor independent of the scale of Y.
+
+```{r}
+quan.df.reg.sum$r.squared
+```
+
+As we can see, the $R^2$ value is relatively high, therefor most of the variance in the response is explained by our regression model. 
+
+The $F-statistic$ is our answer to the following question: 
+Is there a relationship between the repsonse and at least one of our predictors?
+In other words, we want to test the null hypothesis:
+$$H_0 : \beta_0 = \beta_1 = ... = \beta_p = 0$$
+versus the alternative hypothesis : 
+$$H_a: {at~least~one~\beta_j~is~non-zero}$$
+to perform this hypothesis we must compute the $F-statistic$,
+$$F = \frac{\frac{TSS - RSS}{p}}{\frac{RSS}{n - p - 1}}$$
+where $p$ is the number of predictors and $n$ is the sample size. 
+Based on a F-distribution table, we can find out the minimum value of F required for us to reject the null hypothesis under differnet values of $\alpha$. 
+```{r}
+quan.df.reg.sum$fstatistic
+```
+As we can see from the relatively large value of the  $F-statistic$ and the corresponding low $p-value$, we can reject the null hypothesis that there is no relationship between the response and any of the predictors. 
+
+#Q6:
+```{r}
+quan.df.reg.sum
+```
+
+in order to select the variables that truly have an effect on the response, I've used the $Backward Selection$ method. The method is performed as follows:
+We start with all the predictors in our model and omit the predictor with the highest $p-value$. this is the least statistically significant predictor in our model. 
+We then fit the new model using the remaining $p - 1$ predictors and start again. We keep deleting predictors with high $p-values$ until we reach predictors with $p-values$ low enough to be statistically significant. 
+
+###step 1: Removing `TotRmsAbvGrd`
+
+re-fitting the model : 
+
+```{r}
+quan.df.reg.mod1 <- update(quan.df.reg, . ~ . - TotRmsAbvGrd, na.action = na.exclude)
+quan.df.reg.mod1.sum <- summary(quan.df.reg.mod1)
+
+quan.df.pred <- quan.df.pred %>%
+  mutate(SalePricePredMod1 = fitted(quan.df.reg.mod1, type = "response"), 
+         SalePriceErrorMod1 = residuals.lm(quan.df.reg.mod1))
+```
+
+
+drawing plots: 
+```{r}
+two.pa <- ggplot(quan.df.pred, aes(x = SalePrice, y = SalePricePredMod1)) + 
+  geom_point() + 
+  geom_smooth() 
+two.pa
+
+quan.df.predh <- quan.df.pred %>%
+  filter(!is.na(SalePrice)) %>%
+  filter(!is.na(SalePricePredMod1))
+hchart(type = "area", density(quan.df.predh$SalePrice), name = "Actual") %>%
+  hc_add_series(type = "area", data = density(quan.df.predh$SalePricePredMod1), name = "Prediction 1") %>%
+  hc_add_theme(hc_theme_db())
+
+two.ed <- ggplot(quan.df.pred) + 
+  geom_histogram(aes(y = ..density.., x = SalePriceErrorMod1), alpha = 0.5, bins = 150) + 
+  geom_density(aes(x = SalePriceErrorMod1), size = 0.5) 
+two.ed
+```
+
+calculating $R^2$ and the $F-statistic$
+
+```{r}
+quan.df.reg.mod1.sum$r.squared
+quan.df.reg.mod1.sum$fstatistic
+
+```
+
+seeing whether or not there are predictors to delete in the next round: 
+
+```{r}
+quan.df.reg.mod1.sum
+```
+
+### step 2: Removing `FullBath`
+
+re-fitting the model: 
+
+```{r}
+quan.df.reg.mod2 <- update(quan.df.reg.mod1, . ~ . - FullBath, na.action = na.exclude)
+quan.df.reg.mod2.sum <- summary(quan.df.reg.mod2)
+
+quan.df.pred <- quan.df.pred %>%
+  mutate(SalePricePredMod2 = fitted(quan.df.reg.mod2, type = "response"), 
+         SalePriceErrorMod2 = residuals.lm(quan.df.reg.mod2))
+```
+
+drawing plots : 
+```{r}
+three.pa <- ggplot(quan.df.pred, aes(x = SalePrice, y = SalePricePredMod2)) + 
+  geom_point() + 
+  geom_smooth()
+three.pa
+
+
+
+quan.df.predh <- quan.df.pred %>%
+  filter(!is.na(SalePrice)) %>%
+  filter(!is.na(SalePricePredMod2))
+hchart(type = "area", density(quan.df.predh$SalePrice), name = "Actual") %>%
+  hc_add_series(type = "area", data = density(quan.df.predh$SalePricePredMod2), name = "Prediction 2") %>%
+  hc_add_theme(hc_theme_db())
+
+three.ed <- ggplot(quan.df.pred) + 
+  geom_histogram(aes(y = ..density.., x = SalePriceErrorMod2), alpha = 0.5, bins = 150) + 
+  geom_density(aes(x = SalePriceErrorMod2), size = 0.5) 
+three.ed
+```
+
+calculating $R^2$ and the $F-statistic$
+```{r}
+quan.df.reg.mod2.sum$r.squared
+quan.df.reg.mod2.sum$fstatistic
+```
+
+seeing whether or not there are predictors to delete in the next round: 
+```{r}
+quan.df.reg.mod2.sum
+```
+
+
+### step 3 : Removing `GarageArea`
+
+re-fitting the model: 
+```{r}
+quan.df.reg.mod3 <- update(quan.df.reg.mod2, . ~ . - GarageArea, 
+                           na.action = na.exclude)
+quan.df.reg.mod3.sum <- summary(quan.df.reg.mod3)
+
+quan.df.pred <- quan.df.pred %>%
+  mutate(SalePricePredMod3 = fitted(quan.df.reg.mod3, type = "response"), 
+         SalePriceErrorMod3 = residuals.lm(quan.df.reg.mod3))
+```
+
+drawing plots : 
+```{r}
+four.pa <- ggplot(quan.df.pred, aes(x = SalePrice, y = SalePricePredMod3)) + 
+  geom_point() + 
+  geom_smooth() 
+three.pa
+
+
+quan.df.predh <- quan.df.pred %>%
+  filter(!is.na(SalePrice)) %>%
+  filter(!is.na(SalePricePredMod3))
+hchart(type = "area", density(quan.df.predh$SalePrice), name = "Actual") %>%
+  hc_add_series(type = "area", data = density(quan.df.predh$SalePricePredMod3), name = "Prediction 3") %>%
+  hc_add_theme(hc_theme_db())
+
+four.ed <- ggplot(quan.df.pred) + 
+  geom_histogram(aes(y = ..density.., x = SalePriceErrorMod3), alpha = 0.5, bins = 150) + 
+  geom_density(aes(x = SalePriceErrorMod3), size = 0.5) 
+three.ed
+```
+
+calculating $R^2$ and the $F-statistic$
+
+```{r}
+quan.df.reg.mod3.sum$r.squared
+quan.df.reg.mod3.sum$fstatistic
+```
+
+seeing whether or not there are predictors to delete in the next round: 
+
+```{r}
+quan.df.reg.mod3.sum
+```
+
+since all of our p-values are less than 0.05, therefor we can reject the null hypothesis that there is no relationship between these predictors and the response ($H_0: = \beta_p = 0$) with a significance level of $\alpha = 0.05$ then we stop here and no longer remove any predictors in this stage.
+
+### Quick Visual Comparison
+
+Predicted Vs. Actual :
+
+```{r}
+grid.arrange(one.pa, two.pa, three.pa, four.pa, nrow = 2)
+
+
+```
+
+Error Density Plots:
+```{r}
+grid.arrange(one.ed, two.ed, three.ed, four.ed, nrow = 2)
+```
+
+
+
+
+in order to see whether the remaining predictors are colinear (as I suggested in Question 2) I have used the `vif()` function. the closer the output is to 1 the less a predictor is correlated with the others.
+
+```{r}
+vif(quan.df.reg.mod3)
+```
+
+since none of the values are that high, I won't change the model : 
+
+```{r}
+quan.df.fit <- quan.df.reg.mod3
+```
+
+
+#Q7
+
+### Constant Variance
+The `Residuals Vs. Fitted` plot on the top and the `Standardized Residuals Vs. Fitted` plot on the bottom left are a good test for this assumption. The plots show that the residuals differ slightly in variance. 
+If the Residuals had constant variance, then there would be no visible pattern in the red line and the line would be somewhat horizontal. As you can see, this is clearly not the case. 
+
+```{r}
+par(mfrow=c(2,2))
+plot(quan.df.fit)
+
+```
+
+### Normality 
+
+This plot (similar to the top right chart in the previous section) shows whether our Residuals have a normal distribution or not. The closer the circles are to the dashed line, the more normal the distribution of the Residuals. 
+As we can see the residuals tend to take distance from the dashed line towards the end. To fix this we can use `sqrt()` and `log()`
+```{r}
+car::qqPlot(quan.df.fit, id.method="identify",
+            simulate = TRUE, main="Q-Q Plot")
+```
+
+using `sqrt()`:
+
+```{r}
+quan.df.fit.sqrt <- update(quan.df.fit, sqrt(SalePrice) ~ ., 
+                           na.action = na.exclude)
+car::qqPlot(quan.df.fit.sqrt, id.method="identify",
+            simulate = TRUE, main="Q-Q Plot")
+```
+ 
+using `log()`:
+
+```{r}
+quan.df.fit.log <- update(quan.df.fit, sqrt(SalePrice) ~ ., 
+                           na.action = na.exclude)
+
+car::qqPlot(quan.df.fit.log, id.method="identify",
+            simulate = TRUE, main="Q-Q Plot")
+```
+ 
+The `log()` works slightly better in case of normality than `sqrt()`
+
+### Independence
+
+in other words we would like to check whether the residuals are *auto-correlated*. When the residuals are autocorrelated, it means that the current value is dependent on the previous value. 
+there are a few ways to determine whether the residuals are dependent (auto-correlated) or not.
+1. Using `acf` plot
+ 
+```{r}
+acf(quan.df.fit.log$residuals)
+```
+
+The first line shows the auto-correlation of the residual with itself, therefor it is always equal to one. 
+As we can see, the next line drops below the blue dashed line (significance level) from which we can conclude that the residuals are not auto-correlated(they are independent).
+
+2. Using `runs` test
+
+In the `runs` test, the null hypothesis is that the Residuals are random (a value is not affected by its previous value.)
+
+```{r}
+lawstat::runs.test(quan.df.fit.log$residuals)
+```
+
+
+Since the $p-value$ attained from this test is very high, we fail to reject the null hypothesis. 
+
+
+3. Using `Durbin-Watson` test.
+
+```{r}
+lmtest::dwtest(quan.df.fit.log)
+```
+
+All three methods used prove that the assumption of Independence regarding the residuals holds. 
+
+#Q8:
+
+Dividing the `train` dataset into training and testing parts:
+
+```{r}
+samp_size = floor(0.8 * nrow(train))
+train_ind = sample(seq_len(nrow(train)), size = samp_size)
+train.tmp <- train[train_ind, ] 
+test.tmp <- train[-train_ind, ]
+```
+
+fitting the model : 
+
+```{r}
+
+quan.df.reg.tmp <- lm(log(SalePrice) ~ YearRemodAdd + GarageCars
+                      + GrLivArea + X1stFlrSF + TotalBsmtSF + 
+                        OverallQual + MasVnrArea, data = train.tmp)
+
+
+```
+
+Drawing the plot : 
+```{r}
+test.tmp <- test.tmp %>%
+  mutate(SalePricePred = exp(predict(quan.df.reg.tmp, 
+                                 type = "response", 
+                                 newdata = test.tmp)), 
+         SalePriceError = (SalePrice - SalePricePred) ^ 2)
+
+ggplot(test.tmp) + 
+  geom_point(aes(x = SalePrice, y = SalePricePred))
+
+ggplot(test.tmp) + 
+  geom_histogram(aes(y = ..density.., x = SalePriceError), alpha = 0.5, bins = 150) + 
+  geom_density(aes(x = SalePriceError), size = 0.5) 
+```
+
+
+###Determining the error of our prediction:
+
+In order to achieve this, I have calculated the Standard Mean Squared Error, 
+$$MSE = \frac{1}{n}\sqrt{\Sigma(\hat{Y_i} - Y_i)^2} $$
+```{r}
+ 
+MSE <- sqrt(mean(test.tmp$SalePriceError, na.rm = T))
+MSE
+```
+
+#Q9:
+Based on the plots drawn in Question 2, I have drawn scatter plots of Sale Price based on predictors that seemed to have a non-linear relationship, which are:
+<li> OverallQual </li>
+<li> GarageCars</li>
+<li> GarageArea (deleted due to low p-value in Question 6) </li>
+<li> TotalBsmtSF (deleted due to low p-value in Question 6) </li>
+<li> X1stFlrSF </li>
+<li> Fireplaces (deleted due to low p-value in Question 6) </li>
+
+
+### OverallQual
+
+based on the chart below, it seems like SalePrice is either a degree 3 polynomial function of OverallQual.
+```{r}
+ggplot(quan.df, aes(x = OverallQual, y = SalePrice))  +
+  geom_count() + 
+  geom_smooth() 
+```
+
+### GarageCars
+
+SalePrice seems to be a degree 2 polynomial function of GarageCars
+
+```{r}
+ggplot(quan.df, aes(x = GarageCars, y = SalePrice)) +
+  geom_count() 
+```
+
+### X1stFlrSF
+
+X1stFlrSF seems to have a linear relationship with SalePrice up until values higher than 3000. These Values can be considered *leverages*. Leverages can be dangerous in model fitting. Therefor we can delete them from the training set. 
+```{r}
+ggplot(quan.df, aes(x = X1stFlrSF, y = SalePrice)) + 
+  geom_point() + 
+  geom_smooth()
+```
+
+after removing leverages : 
+```{r}
+train <- train %>%
+  filter(X1stFlrSF < 3000)
+ggplot(train, aes(x = X1stFlrSF, y = SalePrice)) + 
+  geom_point() + 
+  geom_smooth()
+```
+
+#Q10:
+
+### The Final Model 
+
+Based on the calculations above, I have made a few adjustments to the model. Also, I have added a few categorical predictors that seemed to have a a strong effect on the response. 
+Lastly, after observing the data set and the discription of each column, I have added a few extra predictors that seemed to affect the price intuitively, such as:
+* OverallCond
+* houseAge
+* YearBuilt
+* MSZoning
+* MSSubClass
+* CentralAir
+
+```{r}
+quan.df.final <- lm(log(SalePrice) ~  
+                      poly(OverallQual, 3) + poly(OverallCond, 3) +
+                      X1stFlrSF +
+                      poly(GarageCars, 2) + 
+                      TotalBsmtSF + GrLivArea + houseAge +
+                      YearRemodAdd + YearBuilt + MSZoning + MSSubClass +
+                      CentralAir, 
+                    data = train,
+                    na.action = na.exclude)
+summary(quan.df.final)
+```
+
+predicting the Sale Prices for the testing data:
+
+```{r}
+test <- test %>%
+  mutate(SalePricePred = exp(predict(quan.df.final, 
+                                     type = "response", 
+                                     newdata = test)))
+```
+
+Kaggle Submission File : 
+
+
+
+```{r}
+result <- test %>%
+  select(Id, SalePrice = SalePricePred)
+write.csv(result, file = "/Users/deyapple/Documents/result.csv", row.names = F)
+```
+
+Kaggle Ranking (#2433): 
+
+since some of the computed values were NA, before submitting them to Kaggle, I replaced them with the mean prediction by hand. 
+
+<div align="center">
+<img  src="rank.png"  align = 'center'>
+</div>
+
+

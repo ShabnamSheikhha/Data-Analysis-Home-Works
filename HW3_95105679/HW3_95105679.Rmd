@@ -1,0 +1,1308 @@
+---
+title: "Third Week: Exploratory Data Analysis"
+subtitle: "LaLiga Analysis"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+<div align="center">
+<img  src="images/laliga-lo.jpg"  align = 'center'>
+</div>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 10,fig.height = 6,fig.align ="center", 
+                      fig.retina=1)
+```
+
+
+
+# Third Assignment
+> <p> 
+  At first, I have made few changes to the `spain` data frame and made up a few
+new ones that i will frequently visit to answer the following questions.
+</p>
+
+```{r, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(highcharter)
+library(engsoccerdata)
+theme_set(theme_minimal())
+
+```
+
+
+###Final results of each season including rank, score, total goals, etc. 
+
+```{r}
+rbind(
+  spain %>%
+    select(Season, team = home, opp = visitor, GF = hgoal, GA = vgoal),
+  spain %>%
+    select(Season, team = visitor, opp = home, GF = vgoal, GA = hgoal)
+) %>% 
+  mutate(GD = GF-GA) %>% 
+  group_by(team,Season) %>% 
+  summarize(GP = n(),
+            goalsF = sum(GF),
+            goalsA = sum(GA),
+            goaldif = sum(GD),
+            W = sum(GD>0),
+            D = sum(GD==0),
+            L = sum(GD<0)
+  ) %>% 
+  mutate(score = W * 3 + D) %>%
+  arrange(Season,desc(score),desc(goaldif), desc(goalsF)) %>% 
+  group_by(Season) %>% 
+  mutate(rank = row_number(-score) %>% as.integer()) -> laliga_fullseason
+```
+
+
+###Results of each half season including rank, score, total goals, etc. 
+
+```{r}
+rbind(
+  spain %>%
+    select(Season, team = home, opp = visitor, GF = hgoal, GA = vgoal),
+  spain %>%
+    select(Season, team = visitor, opp = home, GF = vgoal, GA = hgoal)
+) %>% 
+  arrange(Season) %>%
+  group_by(Season) %>%
+  filter((row_number(Season) <= max(row_number(Season)) / 4) | 
+           (row_number(Season) > max(row_number(Season)) / 2 & 
+              row_number(Season) <= 3 * max(row_number(Season)) / 4)) %>%
+  mutate(GD = GF-GA) %>% 
+  group_by(team,Season) %>% 
+  summarize(GP = n(),
+            goalsF = sum(GF),
+            goalsA = sum(GA),
+            goaldif = sum(GD),
+            W = sum(GD>0),
+            D = sum(GD==0),
+            L = sum(GD<0)
+  ) %>% 
+  mutate(score = W * 3 + D) %>%
+  arrange(Season,desc(score), goaldif) %>% 
+  group_by(Season) %>% 
+  mutate(rank = row_number(Season) %>% as.integer()) -> laliga_halfseason
+```
+
+
+###Weekly results of season including rank, score, total goals, etc. 
+
+```{r}
+spain %>%
+  group_by(Season) %>%
+  mutate(teamnum = n_distinct(home)) %>%
+  arrange(Date) %>%
+  mutate(week = (row_number(Date) - 1) %/% (teamnum / 2) + 1) -> divweek
+
+
+rbind(
+  divweek %>%
+    select(week, Date, teamnum, Season, team = home, opp = visitor, GF = hgoal, GA = vgoal, FT),
+  divweek %>%
+    select(week, Date, teamnum, Season, team = visitor, opp = home, GF = vgoal, GA = hgoal, FT)
+) %>% 
+  mutate(GD = GF-GA) %>%  
+  mutate(W = ifelse(GD > 0,1,0),
+         D = ifelse(GD == 0,1,0),
+         L = ifelse(GD < 0,1,0)
+  ) %>%
+  arrange(Season, week) %>%
+  group_by(Season, team) %>% 
+  mutate(goalsF = cumsum(GF),
+         goalsA = cumsum(GA),
+         goaldif = cumsum(GD),
+         W = cumsum(W),
+         D = cumsum(D),
+         L = cumsum(L)
+  ) %>% 
+  mutate(score = W*3 + D) %>% 
+  arrange(week, desc(score),desc(goaldif), desc(goalsF)) %>%
+  group_by(Season, week) %>%
+  mutate(rank = row_number(-score)) -> laliga_weekly
+```
+
+
+<p> 
+  Now, I will proceed to answer the following questions 
+by making slight changes to the data frames mentioned above.
+</p>
+
+***
+
+## Q1: Total number of wins for each champion
+
+<p> 
+  Having the `laliga_fullseason` data frame, I only need to chose the teams
+that ranked first in each season, group the data frame by those teams, and
+arrange them based on total number of wins.
+</p>
+
+```{r}
+laliga_fullseason %>%
+  filter(rank == 1) %>%
+  group_by(team) %>%
+  summarise(totwins = n()) %>%
+  arrange(desc(totwins)) -> laliga_winners
+
+laliga_winners$team <- factor(laliga_winners$team, levels=laliga_winners$team[order(laliga_winners$totwins)])
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+ggplot(data = laliga_winners, aes(x = team, y = totwins)) + 
+  geom_bar(stat = "identity", aes(fill = team)) +  
+  geom_label(aes(label = paste("Number of wins:", totwins), color = team), 
+            size = 2, fontface = "bold.italic") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+  scale_fill_brewer(palette = 4) + 
+  scale_color_brewer(palette = 4)
+```
+
+
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+
+laliga_winners %>%
+hchart(type = "column",
+       hcaes(x = team, y = totwins),
+       color = "darkmagenta",
+       name = "Title Wins") %>%
+  hc_yAxis(title = list(text = "Number of Title Wins")) %>%
+  hc_xAxis(title = list(text = "Clubs"), 
+           opposite = TRUE, 
+           tickColor = "darkmagenta", 
+           tickLength = 3, 
+           tickWidth = 1.5) %>%
+  hc_title(text = "Top 10 Most Title Wins") %>%
+  hc_subtitle(text = "Comparing Tital Sins of LaLiga Clubs") %>%
+  hc_add_theme(hc_theme_google())
+
+```
+
+***
+
+
+## Q2: The Most Boring League Seasons and Teams
+
+
+### The Most Boring League Seasons
+
+<p>
+  I've summarised each season with three colomns:
+    1. number of total goals = A
+    2. number of games with no goals in halftime = B
+    3. number of games with 0-0 final results = C
+    4. number of games with 1-1 final results = D
+  I've computet the boringness of each league by this equation: 
+  
+  
+  $$boringness = \frac{10 * C + 7 * B + 5 * D - A}{10}$$
+  <br> <br> 
+  
+  
+  
+  Afterwards, I sort them in descending order based of this value.
+</p>
+```{r, message = FALSE}
+library(stringr)
+as.tbl(spain) %>%
+  mutate(totGF = hgoal + vgoal, 
+         totGH = as.numeric(str_sub(HT, start = 1, end = 1)) + 
+           as.numeric(str_sub(HT, start = 3, end = 3)), 
+         FHdif = totGF - totGH) %>%
+  group_by(Season) %>%
+  summarise(goal = sum(totGF) / n(), 
+            nogoal = sum(hgoal + vgoal == 0) / n(), 
+            draws = sum(hgoal == vgoal & hgoal + vgoal == 2) / n(), 
+            nogoalht = sum(FHdif == 0) / n()) %>%
+  mutate(boringness = (-1 * goal + 10 * nogoal + 7 * nogoalht + 5 * draws) / 10)%>%
+  arrange(desc(boringness)) %>%
+  slice(1:10) -> boring_season
+  
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r, message=FALSE}
+boring_season$Season <- factor(boring_season$Season, levels=boring_season$Season[order(boring_season$boringness)])
+
+##TODO FIX THIS
+
+ggplot(data = boring_season, aes(x = Season)) + 
+  geom_point(aes(y = boringness, color = "Boringness(total)"), size = 2) + 
+  geom_line(aes(y = boringness, color = "Boringness(total)"), group = 1, size = 2) + 
+  geom_point(aes(y = goal / 10, color = "Goals")) + 
+  geom_line(aes(y = goal / 10, color = "Goals"), group = 1) + 
+  geom_point(aes(y = nogoal, color = "0-0 Results")) + 
+  geom_line(aes(y = nogoal, color = "0-0 Results"), group = 1) + 
+  geom_point(aes(y = draws, color = "1-1 Results")) + 
+  geom_line(aes(y = draws, color = "1-1 Results"), group = 1) + 
+  geom_point(aes(y = nogoalht, color = "No Goals in Halftime")) + 
+  geom_line(aes(y = nogoalht, color = "No Goals in Halftime"), group = 1) + 
+  theme(legend.title = element_blank())
+```
+
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+boring_season %>%
+  hchart(type = "column",
+         hcaes(x = as.character(Season), y = round(boringness, 3)), 
+         name = "Boringness", 
+         dataLabels = list(enabled = T)) %>%
+  hc_add_series(data = round(boring_season$nogoal, 2), name = "0-0 results", 
+                dataLabels = list(enabled = T)) %>%
+  hc_add_series(data = round(boring_season$draws, 2), name = "1-1 results",
+                dataLabels = list(enabled = T)) %>%
+  hc_add_series(data = round(boring_season$goal/ 10, 2), name = "goals", 
+                dataLabels = list(enabled = T)) %>%
+  hc_add_series(data = round(boring_season$nogoalht, 2), name = "No Goals in ht", 
+                dataLabels = list(enabled = T)) %>%
+  hc_yAxis(title = list(text = "Boringness")) %>%
+  hc_xAxis(title = list(text = "Season")) %>%
+  hc_title(text = "Top 10 Most Boring Season") %>% 
+  hc_subtitle(text = "Based on goals, 0-0 or 1-1 results and games with no goals in halftime") %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(hc_theme_google())
+```
+
+
+### The Most Boring Teams
+
+<p>
+  I've summarised each team by these columns:
+    1. mean of all the goals = A
+    2. mean of all the games with no goals = B
+    3. mean of all games with draw results = C
+  Then I calculate boringness of each team by this equation:
+  
+  $$boringness = \frac{10 * B + 5 * C - A}{10}$$
+  <br> <br> 
+  
+  
+  
+  
+  Afterwards, I again sort the games in descending order based on this value.
+</p>
+
+```{r}
+rbind(
+  spain %>%
+    select(Season, team = home, 
+           opp = visitor, GF = hgoal, GA = vgoal),
+  spain %>%
+    select(Season, team = visitor, 
+           opp = home, GF = vgoal, GA = hgoal)
+) %>% 
+  group_by(team) %>%
+  summarise(goal = sum(GF) / n(), 
+            nogoal = sum(GF == 0) / n(), 
+            draw = sum(GF == GA) / n())%>%
+  mutate(boringness = (-1 * goal + 10 * nogoal + 5 * draw) /10) %>%
+  arrange(desc(boringness)) %>%
+  slice(1:10) -> boring_team
+
+
+```
+
+> <p> 
+  ggplot:
+</p>
+
+```{r}
+boring_team$team = factor(boring_team$team, levels=boring_team$team[order(boring_team$boringness)])
+
+ggplot(data = boring_team, aes(x = team)) + 
+  geom_point(aes(y = boringness, color = "Boringness(total)"), size = 2) + 
+  geom_line(aes(y = boringness, color = "Boringness(total)"), group = 1, size = 2) + 
+  geom_point(aes(y = goal / 10, color = "Goals")) + 
+  geom_line(aes(y = goal / 10, color = "Goals"), group = 1) + 
+  geom_point(aes(y = nogoal, color = "no goals scored")) + 
+  geom_line(aes(y = nogoal, color = "no goals scored"), group = 1) + 
+  geom_point(aes(y = draw, color = "draw")) + 
+  geom_line(aes(y = draw, color = "draw"), group = 1) + 
+  theme(legend.title = element_blank(), 
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) 
+```
+
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+boring_team %>%
+  hchart(type = "column",
+         hcaes(x = team, y = round(boringness, 3)), 
+         name = "Boringness", 
+         dataLabels = list(enabled = T)) %>%
+  hc_add_series(data = round(boring_team$nogoal, 2), name = "no goals scored", 
+                dataLabels = list(enabled = T)) %>%
+  hc_add_series(data = round(boring_team$draw, 2), name = "draw", 
+                dataLabels = list(enabled = T)) %>%
+  hc_add_series(data = round(boring_team$goal, 2) / 10, name = "goals", 
+                dataLabels = list(enabled = T)) %>%
+  hc_yAxis(title = list(text = "Boringness")) %>%
+  hc_xAxis(title = list(text = "Team")) %>%
+  hc_title(text = "Top 10 Most Boring Teams") %>% 
+  hc_subtitle(text = "Based on goals, games with no goal scored, and games with draw results.") %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(hc_theme_google())
+```
+
+
+***
+
+##Q3: How many times has the half season winner won the league?
+
+<p >
+  I've used the `laliga_halfseason` and `laliga_fullseason` data frames I've built in the beginning. From both data frames I've chosen the teams that have ranked first. Then I've used the `full_join()` function.
+</p>
+
+```{r, message = FALSE}
+laliga_halfseason %>%
+  filter(rank == 1) %>%
+  select(Season, halfwinner = team) -> laliga_winner_hs
+
+laliga_fullseason %>%
+  filter(rank == 1) %>%
+  select(Season, fullwinner = team) -> laliga_winner_fs
+
+hs_vs_fs <- full_join(laliga_winner_hs, laliga_winner_fs)
+```
+
+> <p> 
+  gplot2:
+</p>
+
+```{r}
+ggplot(data = hs_vs_fs) + 
+  geom_label(aes(x = halfwinner, y= fullwinner, 
+                 fill = (halfwinner == fullwinner), 
+                 label = Season), 
+             size = 3, 
+             label.r = unit(0, "lines"), 
+             color = "white") +
+  scale_fill_manual(labels = c("half season winner didn't win the league", 
+                               "half season winner won the league"), 
+                    values = c("TRUE"= "green", 
+                               "FALSE"= "red")) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+        legend.title = element_blank(), 
+        legend.background = element_blank(), 
+        legend.key = element_blank(), 
+        legend.position = "top") + 
+  xlab("Half Winner") +
+  ylab("Full Winner")
+```
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+hchart(hs_vs_fs, "column", 
+       hcaes(x = fullwinner, 
+             y = Season, 
+             group = (fullwinner == halfwinner))) %>%
+  hc_title(text = "Was the Title Winner also the Half winner?") %>% 
+  hc_subtitle(text = "Red Line: yes, Blue Line: No") %>%
+  hc_yAxis(title = list(text = "Title Winner")) %>%
+  hc_add_theme(hc_theme_google())
+
+hs_vs_fs %>%
+  mutate(equal = ifelse(halfwinner == fullwinner, 
+                        "Half Season Winner <br> Won The League", 
+                        "Half Season Winner <br> Didn't Win The League")) %>%
+  group_by(equal) %>%
+  summarise(count = n())-> piestat
+
+piestat %>%
+  hchart(type = "pie", 
+         hcaes(x = equal, y = round(count / sum(count), 2))) %>%
+  hc_title(text = "Comparison of halfseason winner and league winner") %>%
+  hc_add_theme(hc_theme_538())
+
+```
+
+```{r, message= FALSE}
+per <- nrow(hs_vs_fs %>%
+              filter(halfwinner == fullwinner)) / 
+  nrow(hs_vs_fs)
+per <- unname(per)
+per <- unlist(per)
+library(scales)
+show(percent(per))
+```
+
+***
+
+<h2> 
+&nbsp; Q4: Between the years 2001 and 2010, which teams were the "Black Cats" of big teams?
+</h2>
+
+<p >
+  I've used the `laliga_fullseason` data frame and chosen the four teams with the most average number of championships.
+</p>
+
+```{r}
+laliga_fullseason %>%
+  filter(Season %in% seq(2001, 2010)) %>%
+  group_by(team) %>%
+  summarise(overallrank = mean(rank)) %>%
+  arrange(overallrank) %>%
+  slice(1:4) %>%
+  select(team) %>%
+  unlist() %>%
+  unname() -> bigteams
+```
+
+<p >
+  Again, I use the `laliga_fullseason` data frame and choose the teams which ranked in the last quarter. In a new column named `info`, I've kept the weakest teams and the season in which they were the weakest.
+</p>
+
+```{r}
+laliga_fullseason %>%
+  filter(Season %in% seq(2001, 2010)) %>%
+  filter(rank > 3 * n() / 4) %>%
+  select(Season, team) %>%
+  mutate(info = paste(Season, team)) %>%
+  ungroup() %>%
+  select(info) %>%
+  unlist() %>%
+  unname() -> weekteams
+```
+
+<p >
+  Then I've filtered the games in which these weak teams have won the big teams. 
+</p>
+
+```{r}
+rbind(
+  spain %>%
+    select(Season, team = home, opp = visitor, GF = hgoal, GA = vgoal),
+  spain %>%
+    select(Season, team = visitor, opp = home, GF = vgoal, GA = hgoal)
+) %>%
+  filter(Season %in% seq(2001, 2010)) %>%
+  mutate(info = paste(Season, team)) %>%
+  filter(info %in% weekteams) %>%
+  filter(opp %in% bigteams) %>%
+  filter(GF > GA) -> blackcats
+
+blackcats <- blackcats %>%
+  select(-info)
+```
+
+```{r echo = FALSE, results='asis'}
+library(knitr)
+kable(blackcats, captions = "Black Cats of Strong Teams")
+```
+
+
+
+***
+
+<h2> 
+&nbsp; Q5: Fastest championship? Best championship?
+</h2>
+
+<h3> 
+&nbsp; Fastest championship
+</h3>
+
+<p>
+  Again, I've used the `laliga_weekly` data frame. I add two new columns. In one I've calculated the difference between teams with successive ranks, and in the other the number of weeks left after each week(which is the number of remaining matches for each team). The I've chosen the teams that have ranked first with a score difference of more than 3 times the remaining games.
+</p>
+
+```{r}
+laliga_weekly %>%
+  mutate(scoredif = score - lead(score)) %>%
+  arrange(Season, week, rank) %>%
+  mutate(gamesleft = (teamnum - 1) * 2 - week) %>%
+  filter(rank == 1) %>%
+  filter(scoredif > gamesleft * 3) %>%
+  select(Season, week, team, score, gamesleft) %>%
+  group_by(Season) %>%
+  filter(gamesleft == max(gamesleft)) %>%
+  arrange(desc(gamesleft)) -> fastestwin
+```
+
+```{r}
+show(fastestwin$team[1])
+show(fastestwin$Season[1])
+show(fastestwin$gamesleft[1])
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+fastestwin %>%
+  group_by(team) %>%
+  summarise(avg = mean(gamesleft)) %>%
+  arrange(desc(avg)) -> fastestwinstat
+
+fastestwinstat$team <- factor(fastestwinstat$team, levels=fastestwinstat$team[order(fastestwinstat$avg)])
+
+ggplot(data = fastestwinstat, aes(x = team, y = avg, color = team)) + 
+  geom_point()+ 
+  geom_line(group = 1, size = 1.5) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+  scale_color_brewer(palette = 11) + 
+  labs(title = "Average of games left after definite win", 
+       x = "Team", y = "games left average")
+```
+
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+fastestwinstat %>%
+  hchart(hcaes(x = team, y = avg, group = avg),
+         showInLegend = FALSE, 
+         type = "column", 
+         name = "mean") %>%
+  hc_yAxis(title = list(text = "Games Left After Definite Win")) %>%
+  hc_xAxis(title = list(text = "Team")) %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(hc_theme_google())
+  
+```
+
+<h3> 
+&nbsp; Best championship
+</h3>
+
+<p>
+  Using the `laliga_fullseason` data frame, I've added a new column calculating the difference between the scores of two successive teams. Then I've filtered the teams that have ranked first and sorted the data based on their score difference.
+</p>
+
+```{r}
+laliga_fullseason %>%
+  mutate(dif = abs(score - lead(score))) %>%
+  filter(rank == 1) %>%
+  arrange(desc(dif)) -> bestwin
+```
+
+
+```{r}
+show(bestwin$team[1])
+show(bestwin$Season[1])
+show(bestwin$dif[1])
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+
+bestwin %>%
+  group_by(team) %>%
+  summarise(avg = mean(dif)) %>%
+  arrange(desc(avg)) -> bestwinstat
+
+bestwinstat$team <- factor(bestwinstat$team, levels=bestwinstat$team[order(bestwinstat$avg)])
+
+ggplot(data = bestwinstat, aes(x = team, y = avg, color = team)) + 
+  geom_point()+ 
+  geom_line(group = 1, size = 1.5) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+  scale_color_brewer(palette = 15) + 
+  labs(title = "Average of score difference in champion and runnerup", 
+       x = "Team", y = "Score Difference")
+```
+
+
+> <p> 
+  highcharter:
+</p>
+
+
+```{r}
+
+bestwinstat %>%
+  hchart(hcaes(x = team, y = avg, group = team), 
+         type = "column", 
+         name = "mean", 
+         showInLegend= FALSE) %>%
+  hc_yAxis(title = list(text = "Score Difference")) %>%
+  hc_xAxis(title = list(text = "Team")) %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(hc_theme_google())
+```
+***
+
+<h2> 
+&nbsp; Q6: Longest winning/losing/draw streak?
+</h2>
+
+<p>
+  I've used the `laliga_result` data frame and added two new columns two it. One states the result (Win, Draw or Lose), the other states the consecutive wins/draws/loses until then.
+</p>
+
+```{r}
+laliga_result <- rbind(
+  spain %>%
+    select(Date, Season, team = home, opp = visitor, GF = hgoal, GA = vgoal),
+  spain %>%
+    select(Date, Season, team = visitor, opp = home, GF = vgoal, GA = hgoal)
+) %>%
+  mutate(GD = GF-GA) %>%
+  mutate(result = ifelse(GD > 0, "Win", ifelse(GD == 0, "Draw", "Lose"))) %>%
+  group_by(team) %>%
+  arrange(team, Date)
+
+laliga_result$streak <- sequence(rle(as.character(laliga_result$result))$lengths)
+
+```
+
+<p>
+  Here I've filtered the teams with the most streaks:
+</p>
+
+```{r}
+
+laliga_result %>% 
+  arrange(result, desc(streak)) %>%
+  group_by(result) %>%
+  filter(streak == max(streak)) %>%
+  select(team, result, streak) -> streakstat
+
+
+show(streakstat %>%
+       filter(result == "Win"))
+
+show(streakstat %>%
+       filter(result == "Draw"))
+
+show(streakstat %>%
+       filter(result == "Lose"))
+```
+
+```{r}
+
+
+streakstat %>%
+  hchart(type = "bar", 
+         hcaes(x = result, y = streak, group = team)) %>%
+  hc_add_theme(hc_theme_gridlight())
+```
+
+<p>
+  To draw plots, I've seperated `laliga_results` into three plots, one for each Win , Lose or Draw result.
+</p>
+
+<h3> 
+&nbsp; Winning Streaks
+</h3>
+
+```{r}
+laliga_result %>%
+  filter(result == "Win") %>%
+  group_by(team) %>%
+  summarise(avg = mean(streak)) %>%
+  arrange(desc(avg)) -> winstreaks
+winstreaks <- winstreaks[1:10, ]
+
+
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+winstreaks$team <- factor(winstreaks$team, levels=winstreaks$team[order(winstreaks$avg)])
+
+ggplot(data = winstreaks, aes(x = team, y = avg, fill = team)) + 
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+  scale_fill_brewer(palette = 9) 
+```
+
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+thm <- hc_theme_merge(
+  hc_theme_darkunica(),
+  hc_theme(
+    chart = list(
+      backgroundColor = "transparent",
+      divBackgroundImage = "http://cdn.wall-pix.net/albums/art-3Dview/00025095.jpg"
+    ),
+    title = list(
+      style = list(
+        color = 'white',
+        fontFamily = "Open Sans"
+      )
+    )
+  )
+)
+
+winstreaks %>%
+  hchart(hcaes(x = team, y = avg, group = team), showInLegend = F, 
+         type = "column", name = "mean") %>%
+  hc_yAxis(title = list(text = "Winning Streak")) %>%
+  hc_xAxis(title = list(text = "Team")) %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(thm)
+```
+
+
+<h3> 
+&nbsp; Losing Streaks
+</h3>
+
+```{r}
+laliga_result %>%
+  filter(result == "Lose") %>%
+  group_by(team) %>%
+  summarise(avg = mean(streak)) %>%
+  arrange(desc(avg)) -> losestreaks
+losestreaks <- losestreaks[1:10, ]
+
+
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+losestreaks$team <- factor(losestreaks$team, levels=losestreaks$team[order(losestreaks$avg)])
+
+ggplot(data = losestreaks, aes(x = team, y = avg, color = team)) + 
+  geom_point(size = 1.5) +
+  geom_line(group = 1, size = 1.5) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+    scale_color_brewer(palette = 12) 
+```
+
+> <p> 
+  highcharter:
+</p>
+
+
+```{r}
+
+losestreaks %>%
+  hchart(hcaes(x = team, y = avg, group = team), 
+         showInLegend = F, type = "column", name = "mean") %>%
+  hc_yAxis(title = list(text = "Losing Streak")) %>%
+  hc_xAxis(title = list(text = "Team")) %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(thm)
+```
+
+
+<h3> 
+&nbsp; Draw Streaks
+</h3>
+
+```{r}
+laliga_result %>%
+  filter(result == "Draw") %>%
+  group_by(team) %>%
+  summarise(avg = mean(streak)) %>%
+  arrange(desc(avg)) -> drawstreaks
+drawstreaks <- drawstreaks[1:10, ]
+
+
+```
+
+> <p> 
+  ggplot2:
+</p>
+
+```{r}
+drawstreaks$team <- factor(drawstreaks$team, levels=drawstreaks$team[order(drawstreaks$avg)])
+
+
+ggplot(data = drawstreaks, aes(x = team, y = avg, color = team)) + 
+  geom_point(size = 1.5) +
+  geom_line(group = 1, size = 1.5) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+    scale_color_brewer(palette = 8) 
+```
+
+
+
+> <p> 
+  highcharter:
+</p>
+
+```{r}
+
+drawstreaks %>%
+  hchart(hcaes(x = team, y = avg, group = team), 
+         showInLegend = F, type = "column", name = "mean") %>%
+  hc_yAxis(title = list(text = "Draw Streak")) %>%
+  hc_xAxis(title = list(text = "Team")) %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(thm)
+```
+
+
+
+***
+
+<h2> 
+&nbsp; Q7: Fastest fall?
+</h2>
+
+<p>
+  Once again, I've made the same changes as Question 5 to the `laliga_weekly` data frame. The teams I've chosen are the teams that have either ranked last, or fourth to last. 
+  Again, I've used the `laliga_weekly` data frame. I add two new columns. In one I've calculated the difference between teams with successive ranks, and in the other the number of weeks left after each week(which is the number of remaining matches for each team). The I've chosen the teams that have ranked first with a score difference of more than 3 times the remaining games. Then I've thrown out the ones that have a score difference of less than 3 times the number of games left. Finally, I arranged the remaining teams in descending order based on the number of games left. (The team with the most number of games left has had the fastest lose in the history of LaLiga)
+</p>
+
+```{r}
+laliga_weekly %>%
+  filter(rank == teamnum | rank == teamnum - 3) %>%
+  arrange(Season, week, rank) %>%
+  mutate(scoredif = lag(score) - score, 
+         gamesleft = (teamnum - 1) * 2 - week)  %>%
+  select(Season, week, Date, team, score, rank, scoredif, teamnum, gamesleft) %>%
+  arrange(Season, week) %>%
+  filter(scoredif > gamesleft * 3) %>%
+  group_by(Season) %>%
+  filter(gamesleft == max(gamesleft)) %>%
+  ungroup() %>%
+  arrange(desc(gamesleft)) %>%
+  mutate(order = row_number(gamesleft)) -> fastestlose
+
+fastestlose <- fastestlose[1:10, ]
+
+```
+
+> <p>
+  ggplot2:
+</p>
+
+```{r}
+
+fastestlose$team <- factor(fastestlose$team, levels=fastestlose$team[order(fastestlose$gamesleft)])
+
+
+ggplot(data = fastestlose, aes(x = team, y = gamesleft, fill = team)) + 
+  geom_bar(stat = "identity")+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+    scale_fill_brewer(palette = 3) 
+```
+
+
+> <p>
+  highcharter:
+</p>
+
+```{r}
+
+fastestlose %>%
+  hchart(hcaes(x = team, y = gamesleft, group = team), 
+         showInLegend = FALSE, type = "column", name = "mean") %>%
+  hc_yAxis(title = list(text = "Games Left")) %>%
+  hc_xAxis(title = list(text = "Team")) %>%
+  hc_tooltip(valueDecimals = 3) %>%
+  hc_add_theme(hc_theme_google())
+```
+
+***
+
+<h2> 
+&nbsp; Q8: Team standings during 1998 Season.
+</h2>
+
+<p>
+  Once again, simply by using the `laliga_weekly` data frame, I've computed the results at the end of each week in 1998. I've also added a new column to account for the way the dates are shown in the sample picture. 
+</p>
+
+```{r}
+laliga_weekly %>%
+  filter(Season == 1998) %>%
+  select(Season, week, Date, team, opp, score, rank) -> laliga1998
+
+laliga1998 %>%
+  mutate(Date1 = Date) %>%
+  separate(Date, c("year", "month_number", "day"), "-") %>%
+  mutate(Date = Date1) %>%
+  select(-Date1) %>%
+  select(-year) %>%
+  select(-month_number) -> laliga1998
+
+laliga1998$month = str_sub(months(as.Date(laliga1998$Date)), start = 1, end =3)
+
+laliga1998 %>%
+  mutate(month_date = paste(month, as.numeric(day))) %>%
+  group_by(week) %>%
+  arrange(Date) %>%
+  mutate(month_date = month_date[which.max(Date)], 
+         Date = max(Date)) %>%
+  ungroup() %>%
+  arrange(week, rank) %>%
+  mutate(dateorder = row_number(week)) -> laliga1998
+
+dates <- laliga1998 %>%
+  select(month_date) %>%
+  distinct() %>%
+  unlist() %>%
+  unname()
+
+teams <- laliga1998 %>%
+  ungroup() %>%
+  filter(week == max(week)) %>%
+  arrange(desc(rank)) %>%
+  select(team) %>%
+  distinct() %>%
+  unlist() %>%
+  unname()
+
+```
+
+> <p>
+  ggplot2:
+</p>
+
+```{r}
+ggplot(data = laliga1998, aes(x = month_date, y = rank, color = team)) + 
+  geom_point() + 
+  geom_line(size = 1, aes(group = team)) + 
+  theme_minimal() + 
+  scale_color_discrete(breaks = teams) + 
+  scale_x_discrete(limit = laliga1998$month_date) +
+  guides(color=guide_legend(
+                 keywidth=0.5,
+                 keyheight=0.235,
+                 default.unit="inch")
+      ) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1), 
+        legend.title = element_blank()) +
+  labs(title = "Team Standings in 2012", 
+       x = "Date", y = "Rank")
+```
+
+
+> <p>
+  highcharter:
+</p>
+
+```{r}
+laliga1998 %>%
+  hchart(type = "line",hcaes(x = month_date, y = rank, group = team)) %>%
+  hc_legend(align = "right",  
+            verticalAlign = "top", 
+            layout = "vertical", x = 0, y = 100) %>%
+  hc_yAxis(reversed = TRUE)
+```
+
+
+***
+
+
+```{r, fig.width=13,fig.height=10}
+laliga2012 <- spain %>%
+  filter(Season == 2012) %>%
+  mutate(GD=hgoal-vgoal,
+         result = ifelse(GD > 0, "Home Wins", ifelse(GD<0, "Away Wins", "Draw")))
+
+teamorder <- laliga2012 %>%
+  select(team = home) %>%
+  distinct() %>%
+  arrange(team)
+
+laliga2012$home <- factor(laliga2012$home, levels=rev(teamorder$team))
+laliga2012$visitor <- factor(laliga2012$visitor, levels=teamorder$team)
+
+ggplot(laliga2012, aes(as.factor(home), as.factor(visitor))) + 
+  geom_tile(aes(fill = result), 
+            colour= "white", 
+            size = 0.5, 
+            stat = "identity", 
+            height = 1, width = 1) +
+  geom_text(aes(label = FT), 
+            color="white", 
+            size=rel(4.2), 
+            fontface = "bold") +
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill="black"),
+    panel.background = element_rect(fill="black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(fill=NA, color="white", size=0.5, linetype="solid"),
+    axis.line = element_blank(),
+    axis.ticks = element_blank(), 
+    axis.text.x  = element_text(angle=45, vjust=0.5, hjust=0),
+    axis.title.x = element_text(color = "white", size = rel(2.5)), 
+    axis.title.y = element_text(color = "white", size = rel(2.5)),
+    axis.text = element_text(color="white", size=rel(1), face = "bold"),
+    legend.title = element_text(color="white", size=rel(1.5), face = "bold.italic"), 
+    legend.text = element_text(color="white", size=rel(1), face = "bold"), 
+    legend.key = element_blank(),
+    legend.background = element_blank()
+  ) + 
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0), 
+                   position = "top") +
+  coord_flip() +
+  xlab("Home") + 
+  ylab("Away") +
+  guides(fill = guide_legend(title="Result", 
+                             default.unit="inch", 
+                             title.position = "top", 
+                             title.hjust = 0.5,
+                             title.vjust = 0.5,
+                             label.hjust = 0.5)) + 
+  scale_fill_manual(labels = c("Away Wins", 
+                               "Draw", 
+                               "Home Wins"), 
+                    values = c("Away Wins"= "darkgoldenrod3", 
+                               "Draw"= "darkgrey", 
+                               "Home Wins" = "darkgreen"))
+```
+
+***
+
+<h2>
+&nbsp; Q10: Three interesting statistics.
+</h2>
+
+<h3>
+&nbsp; Zero to Hero
+</h3>
+<p>
+  In this section, I've found the teams with the best comebacks. Meaning, the teams with the most change in ranks between halfseason and final results.
+</p>
+
+```{r}
+laliga_complete <- rbind(laliga_halfseason, 
+                         laliga_fullseason) %>% arrange(Season)
+
+rankchangestat <- laliga_complete %>%
+  group_by(Season, team) %>%
+  mutate(dif = lead(rank) - rank) %>%
+  mutate(rankchange = paste(rank, lead(rank), sep = "-")) %>%
+  filter(!is.na(dif)) %>%
+  select(Season, team, rankchange, dif) %>%
+  arrange(Season, team) 
+
+biggestcomebacks <- rankchangestat %>%
+  arrange(dif)
+biggestcomebacks <- biggestcomebacks[1:10, ]
+biggestcomebacks <- biggestcomebacks %>%
+  mutate(dif = abs(dif))
+
+biggestcomebacks$team <- factor(biggestcomebacks$team, levels=biggestcomebacks$team[order(biggestcomebacks$dif)])
+```
+
+
+> <p>
+  ggplot2:
+</p>
+
+```{r}
+ggplot(data = biggestcomebacks, aes(x = team, y = dif, color = Season)) + 
+  geom_point(size = 4) + 
+  geom_line(group = 1, size = 2) +  
+  geom_label(aes(label = Season)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(title = "Biggest Comeback", 
+       x = "team", y = "Rank Change") + 
+  scale_y_discrete(limit = biggestcomebacks$dif)
+
+
+```
+
+> <p>
+  highcharter:
+</p>
+
+```{r}
+biggestcomebacks %>%
+hchart(type = "column",
+       hcaes(x = team, y = dif), 
+       name = "rank change", 
+       color = "deeppink") %>%
+  hc_add_theme(hc_theme_google())
+```
+
+***
+<h2>
+&nbsp; 2
+</h2>
+
+<h3>
+&nbsp; Just Out of Reach
+</h3>
+
+<p>
+  In this section, I've arranged the runner-ups of each year based on the difference in their score with the champion's and plotted the top 10 least differences.
+</p>
+
+```{r}
+laliga_runnerup <- laliga_fullseason %>%
+  filter(rank == 2 | rank == 1) %>%
+  mutate(scoredif = lag(score) - score) %>%
+  filter(scoredif != 0) %>%
+  arrange(scoredif) 
+
+```
+
+> <p>
+  ggplot2:
+</p>
+
+```{r}
+ggplot(data = laliga_runnerup, aes(x = team, y = scoredif))  + 
+  geom_label(aes(label = Season, 
+                  fill = as.character(row_number(scoredif) %/% 10 + 1))) + 
+  scale_fill_brewer(palette = 10) +
+  scale_y_reverse() +
+  guides(fill = guide_legend(title = "Rank of Score Difference")) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+```
+
+
+> <p>
+  highcharter:
+</p>
+
+```{r}
+laliga_runnerup[1:20, ] %>%
+  hchart(type = "column", 
+         hcaes(x = team, y = scoredif, group = Season))
+```
+
+
+
+<h3>
+&nbsp; The Verge of The Tipping Point
+</h3>
+
+<p>
+  In this section, I've found the fewest points while surviving relegation.
+</p>
+
+```{r}
+laliga_relagation_survive <- laliga_fullseason %>%
+  group_by(Season) %>%
+  mutate(teamnum = n_distinct(team)) %>%
+  filter(rank == teamnum - 3 | rank == teamnum - 2) %>%
+  mutate(scoredif = score - lead(score)) %>%
+  filter(rank == teamnum - 3 & scoredif != 0) %>%
+  group_by(scoredif) %>%
+  summarise(num = n()) %>%
+  arrange(desc(num))
+
+```
+
+> <p>
+  ggplot2:
+</p>
+
+```{r}
+
+ggplot(data = laliga_relagation_survive, aes(x = scoredif, y = num, color = num)) + 
+  geom_point(size = 2) + 
+  geom_line(group = 1, size = 1.5) + 
+  theme(legend.title =element_blank())
+
+```
+
+> <p>
+  highcharter:
+</p>
+
+```{r}
+laliga_relagation_survive %>%
+  hchart(type = "column", 
+         hcaes(x = scoredif, y = num)) %>%
+  hc_add_theme(thm)
+```
+
+<h3>
+&nbsp; The Ultimate Fall From Grace
+
+</h3>
+
+<p>
+  In this section, I've computed the worst defeat by a winner in the season after its championship.
+</p>
+
+```{r}
+laliga_weekly %>%
+  ungroup() %>%
+  arrange(Date, team) %>%
+  group_by(Season) %>%
+  mutate(winner = team[which.max(score)]) %>% 
+  ungroup() %>%
+  arrange(Date) %>%
+  mutate(winner = lag(winner)) %>%
+  group_by(Season) %>%
+  arrange(Date) %>%
+  mutate(prevwinner = winner[which.min(row_number(Date))]) -> history
+
+history %>%
+  group_by(Season) %>%
+  filter(team == prevwinner) %>%
+  select(Season, team, opp, GA, GF, FT, GD, prevwinner) %>%
+  arrange(GD)-> shame 
+shame <- shame[1:15, ]
+shame <- shame %>%
+  mutate(GD = abs(GD)) %>%
+  select(Season, team, GD)
+
+```
+
+> <p>
+  ggplot2:
+</p>
+
+
+```{r}
+ggplot(data = shame, aes(x = team, y = GD, fill = as.character(Season), show.legend = F), show.legend = FALSE) + 
+  geom_label(aes(label = Season)) +  
+  scale_fill_brewer(palette = "Spectral")  
+```
+
+
+
+> <p>
+  highcharter:
+</p>
+
+```{r}
+
+shame %>%
+  hchart(type = "bar", 
+         hcaes(x = team, y = GD, group = Season)) 
+```
+
+

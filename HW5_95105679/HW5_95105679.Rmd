@@ -1,0 +1,519 @@
+---
+title: "Fifth Week: Bootstrap and Resampling Methods"
+subtitle: "Nonparametric Hypothesis tests"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    toc: true
+    toc_depth: 5
+    theme: cayman
+    highlight: github
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 10,fig.height = 6,fig.align ="center", 
+                      fig.retina=1)
+```
+
+```{r, echo=FALSE, message=FALSE, include = FALSE}
+library(tidyverse)
+library(devtools)
+library(highcharter)
+library(boot)
+```
+> <p dir = "RTL">
+در پاسخ ها منظور از $p-value$ نسبتا بالا $p-value$ > 0.05 و منظور از $p-value$ نسبتا پایین $p-value$ < 0.05 است. 
+</p>
+
+***
+
+<h1 dir="RTL"> 
+###سوال اول: بررسی برابری عملکرد نمایندگی های یک شرکت
+</h1>
+
+<p dir="RTL">
+شرکتی میخواهد تحقیق کند آیا درآمد نمایندگی های آن یکسان است. برای بررسی این موضوع هشت نمایندگی
+به طور تصادفی انتخاب شده اند که به ترتیب میزان فروش آنها عبارت است از 
+102, 300, 102, 100, 205, 105, 71 , 92.
+با توجه به داده آیا عملکرد نمایندگی ها یکسان است؟
+</p>
+
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+income = c(102, 300, 102, 100, 205, 105, 71 , 92)
+
+```
+
+<p dir="RTL">
+در این سوال میخواهیم بررسی کنیم که آیا داده هایمان به صورت یکسان توزیع شده اند یا نه.
+</p>
+
+<p dir="RTL">
+در Chi-square Goodness of Fit test پیروی داده ها از توزیعی پیشفرض بررسی میشود. پس برای این سوال, استفاده از این تست مناسب است. 
+</p>
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0: I_1 = I_2... = I_8$} \\
+    \text{$H_A$: $I_i$s are not equally distributed}
+  \end{cases}
+\end{equation}
+\]
+
+```{r}
+chisq.test(income)
+```
+
+
+<p dir="RTL">
+چون $p-value$ کم به دست آمده است میتوان فرض صفر را رد کرد. پس نتیجه میگیریم که درآمد همه ی شرکت ها به صورت یکسان توزیع نشده است(برابر نیست)
+</p>
+
+***
+***
+<h1 dir="RTL"> 
+###سوال دوم: سنتی علیه مدرن
+</h1>
+
+<p dir="RTL">
+آمار فروش شرکتی در دو نوع شعبه سنتی و مدرن در زیر آمده است:
+</p>
+
+Classical stores: 50, 50, 60, 70, 75, 80, 90, 85
+
+Modern stores: 55, 75, 80, 90, 105, 65
+
+<p dir="RTL">
+آیا تفاوتی در عملکرد دو نوع شعبه وجود دارد؟
+</p>
+
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+classic <- c(50, 50, 60, 70, 75, 80, 90, 85)
+modern <- c(55, 75, 80, 90, 105, 65)
+stat2 <- data.frame(sales = c(classic, modern),
+                       branch = factor(c(rep("Classic",length(classic)), 
+                                            rep("Modern",length(modern)))))
+```
+
+<p dir="RTL">
+در این سوال میخواهیم ببینیم که آیا دو در عملکرد دو شعبه ی متفاوت تفاوتی وجود دارد یا نه. به عبارتی میخواهیم ببینیم آیا میتوان گفت دو شعبه توزیع یکسانی دارند؟
+</p>
+
+<p dir="RTL">
+در Permutation test اینکه آیا دو دسته داده توزیع یکسانی دارند یا نه بررسی میشود. به این صورت که فرض صفر را برابری توزیع داده ها در نظر میگیریم. به همین دلیل میتوان گفت هرداده ای که در دسته ی اول باشد میتواند در دسته ی دوم نیز باشد. داده ها را به صورت رندوم میچینیم و $p-value$ نمونه داده اولیه را برحسب نمونه های رندوم به دست آورده شده به دست می آوریم
+</p>
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0$: The distribution of the two sets are the same.} \\
+    \text{$H_A$: The distribution of the two sets differ.}
+  \end{cases}
+\end{equation}
+\]
+
+<p dir="RTL">
+با توجه به توضیحات داده شده, برای این سوال استفاده از Permutation test مناسب است. برای این کار از تابع `oneway_test()` واقع در پکیج `coin` استفاده میکنیم.
+</p>
+
+```{r}
+coin::oneway_test(sales~branch, data = stat2, distribution = "exact")
+```
+
+
+<p dir="RTL">
+به علت محاسبهی $p-value$ نسبتا بالا, نمیتوان فرض صفر (عملکرد دو شعبه تفاوتی با هم ندارد) را رد کرد.
+</p>
+
+***
+***
+<h1 dir = "RTL">
+###سوال سوم: بررسی تاثیر طرح تبلیغاتی جدید بر فروش
+</h1>
+
+<p dir="RTL">
+اطلاعات حسابداری ۱۵ شعبه که به صورت تصادفی انتخاب شده اند به شرح زیر است:
+</p>
+
+509, 517, 502, 629, 830, 911, 847, 803, 727, 853, 757, 730, 774, 718, 904
+
+<p dir="RTL">
+شرکت مذکور برای ارتقای فروش خود یک طرح تبلیغاتی جدید را اجرا میکند. پس از طرح جدید نتایج عملکرد شعبه ها  به صورت زیر 
+اندازه گیری شده است
+</p>
+
+517, 508, 523, 730, 821, 940, 818, 821, 842, 842, 709, 688, 787, 780, 901
+
+<p dir="RTL">
+آیا تبلیغات جدید عملکرد فروش را بالا برده است؟
+</p>
+
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+before <- c(509, 517, 502, 629, 830, 911, 847, 803, 727, 853, 757, 730, 774, 718, 904)
+after <- c(517, 508, 523, 730, 821, 940, 818, 821, 842, 842, 709, 688, 787, 780, 901)
+stat3 <- data.frame(sales = c(before, after), 
+                    status = factor(c(rep("Before", length(before)), 
+                                          rep("After", length(after)))))
+```
+
+<p dir="RTL">
+در این سوال میخواهیم بررسی کنیم که آیا طرح تبلیغاتی موجب پیشرفت فروش شده است یا نه.
+</p>
+
+<p dir="RTL">
+در Wilcoxon Signed-Rank test به زبان ساده, عملکرد دو گروه از داده که از منبع مشترکی می آیند بررسی میشوند بدین صورت که یک گروه تحت تاثیر تغییری در منبع بوده اند و یک گروه نه. 
+</p>
+
+<p dir="RTL">
+به هر عدد میتوان یک rank اختصاص داد. چون اعداد در دو سطح before و after قرار دارند, برای تست کردن فرض صفر (اینکه تبلیغات جدید بر فروش محصول اثری نداشته است) استفاده از wilcoxon signed-rank test مناسب است.
+</p>
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0:$ Advertisement increased the sales.} \\
+    \text{$H_A$: Advertisement had none or negative effect on the sale.}
+  \end{cases}
+\end{equation}
+\]
+
+```{r}
+wilcox.test(sales ~ status, data = stat3, paired = TRUE , alternative = "less")
+```
+
+
+<p dir="RTL">
+به علت محاسبه ی $p-value$ نسبتا بالا نمیتوان فرض صفر را رد کرد. پس میتوان نتیجه گرفت که تبلیغات جدید بر فروش محصول اثری نگذاشته اند.
+</p>
+
+***
+***
+<h1 dir = "RTL">
+###سوال چهارم: بررسی تاثیر رنگی خاصی در میزان فروش محصولات
+</h1>
+
+<p dir="RTL">
+محصولی در سه رنگ سفید آبی و قرمز تولید شده است.
+پنج شعبه ار فروشگاه سازنده محصول به صورت تصادفی انتخاب شده و اطلاعات فروش آنها در زیر آمده است.
+</p>
+
+| Store | White | Blue | Red |
+| :----: | :----: | :----: | :----: |
+| 1. |	510 |	925 |	730 |
+| 2. | 720 | 735 | 745 |
+| 3. |	930 |	753 |	875 |
+| 4. |	754 |	685 |	610 |
+| 5. |	105	|  |  |
+
+<p dir="RTL">
+با توجه به داده های بالا آیا رنگی خاص در میزان فروش محصولات تاثیر دارد؟
+</p>
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+white = c(510, 720, 930, 754, 105)
+blue = c(925, 735, 753, 685)
+red = c(730, 745, 875, 610)
+
+stat4 <- data.frame(sales = c(white, blue, red),
+           color = factor(c(rep("White", length(white)), 
+                            rep("Blue", length(blue)),
+                            rep("Red", length(red)))))
+```
+
+<p dir="RTL">
+در این سوال میخواهیم ببینیم آیا فروش رنگ یا رنگ های خاصی نسبت به سایر رنگ ها تفاوت معناداری دارد یا نه؟
+</p>
+
+<p dir="RTL">
+در Kruskal-Wallis test گروه هایی بر اساس متغیرهای ordinal یا continuous داریم که شامل متغیرهای تصادفی مستقل از هم هستند. میخواهیم ببینیم آیا از بین این گروه ها, گروهی هست که تفاوت معناداری نسبت به بقیه داشته باشد یا نه. 
+</p>
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0: \mu_1 = \mu_2 = \mu_3$} \\
+    \text{$H_A$: There is a significant difference in one of the means.}
+  \end{cases}
+\end{equation}
+\]
+
+<p dir="RTL">
+طبق نوشته های بالا, در این سوال استفاده از Kruskal-Wallis test مناسب است.  
+</p>
+
+```{r}
+kruskal.test(sales ~ color, data = stat4)
+```
+
+<p dir="RTL">
+به علت محاسبهی $p-value$ بالا, نمیتوان فرض صفر را رد کرد. پس میتوان نتیجه گرفت که رنگ تاثیری در میزان فروش محصول ندارد.
+هنگام استفاده از تابع موجود در پکیج `coin` نیز طبق انتظار, همان نتایج به دست آمد:
+</p>
+
+```{r}
+coin::kruskal_test(sales ~ color, data = stat4)
+```
+
+***
+***
+<h1 dir = "RTL">
+### سوال پنجم: بررسی اثر تبلیغات بر رضایت مردم
+</h1>
+
+<p dir="RTL">
+یک موسسه نظرسنجی نظرات مردم در مورد رضایت از یک محصول که در ماه های فروردین اردیبهشت خرداد و تیر که از طریق تلویزیون 
+تبلیغ شده است را مورد ارزیابی قرار می دهد.این کار بدین صورت است از افرادی در ماه اول سوال پرسیده می شود و در ماه آینده نیز از همان فرد سوال می شود که آیا از محصول مذکور راضی هستی یا خیر.
+با توجه به داده ایی که در پیوست تمرین آمده است آیا تبلیغات تاثیر مثبتی در افزایش رضایت مردم داشته است؟
+</p>
+
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+tv <- read_csv("/Users/deyapple/Documents/Courses/Term04/DA/Homework/hw_05/data/tv.csv")
+```
+
+<p dir="RTL">
+میخواهیم ببینیم که در طی چند ماه آیا رضایت مردم به علت تبلیغات افزایش یافته است یا نه؟
+</p>
+
+<p dir="RTL">
+هنگامی که بخواهیم تفاوت بین گروه هایی از یک متغیر ordinal پیوسته را بسنجیم از Friedman test استفاده میکنیم. 
+</p>
+
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0$: Advertisement doesn't affect customer's satisfaction. } \\
+    \text{$H_A$: Advertisement has an effect on customer's satisfaction.}
+  \end{cases}
+\end{equation}
+\]
+
+<p dir="RTL">
+در اینجا نظرات یک سری مردم طی ماه های مختلف مدنظر ماست. پس این را میتوان متغیر ordinal پیوسته ی موردنظر در نظر گرفت و از تست Friedman استفاده کرد.
+</p>
+
+```{r}
+friedman.test(cbind(tv$March,tv$April,tv$May,tv$Jun))
+```
+
+<p dir="RTL">
+به علت محاسبه ی $p-value$ بالا نمیتوان فرض صفر را رد کرد. پس میتوان گفت که تبلیغات تاثیری در افزایش رضایت مردم نداشته است.
+با استفاده از تابع موجود در پکیج `coin` نیز, طبق انتظار همان نتایج به دست آمد. 
+</p>
+
+```{r}
+tv_coin <- tv %>%
+  gather("month", "view", 1:4) %>%
+  mutate(month = as.factor(month))
+coin::friedman_test(view ~ month, data = tv_coin)
+```
+
+***
+***
+<h1 dir = "RTL">
+### سوال ششم: بررسی اثر جمعیت بر میران مصرف محصولات
+</h1>
+
+<p dir="RTL"> 
+شرکتی در حال تحقیق بر روی این موضوع است که آیا جمعیت شهر تاثیری در نوع میزان مصرف محصولات شرکت دارد.
+با توجه به داده زیر این موضوع را تحقیق کنید؟
+</p>
+
+
+| City size |	| Frequency of service usage | |
+| :---: |  :---:  | :---: | :---: | 
+| | Always	| Sometime | Never |
+| Small	| 151	| 252	| 603 |
+| Medium	| 802	| 603	| 405 |
+| Large	| 753	| 55	| 408 |
+
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+stat6 = matrix(data = c(151, 802, 753, 252, 603, 55, 603, 405, 408), 
+                nrow = 3, ncol = 3, 
+                dimnames = list(c("Always" , "Sometime", "Never"), 
+                                c("Small", "Medium", "Large" )))
+```
+
+<p dir="RTL"> 
+میخواهیم بررسی کنیم که آیا جمعیت تاثیری بر نوع میزان مصرف محصولات (که متغیرهایی کیفی هستند) دارد یا نه. 
+</p>
+
+<p dir="RTL"> 
+
+در Chi-squared test بررسی میکنیم که آیا متغیرهای از نوع categorical رابطه ی معناداری با هم دارند یا نه. 
+</p>
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0$: There is no relationship between population size and service usage frequency.} \\
+    \text{$H_A$: There is a significant relationship between population size and service usage frequency.}
+  \end{cases}
+\end{equation}
+\]
+
+<p dir="RTL"> 
+با توجه به نوشته های بالا, برای این سوال استفاده از Chi-square test مناسب است.  
+</p>
+
+
+```{r}
+chisq.test(stat6)
+```
+
+<p dir="RTL"> 
+به علت محاسبهی $p-value$ پایین, میتوان فرض صفر (جمعیت شهر تاثیری در نوع میزان مصرف محصولات شرکت ندارد) را رد کرد. 
+</p>
+
+***
+***
+<h1 dir = "RTL">
+### سوال هفتم: بررسی تاثیر ارائه ی محصول الف بر فروش محصول ب 
+</h1>
+
+<p dir="RTL"> 
+شرکتی انتظار دارد با ارایه محصول الف میزان فروش محصول ب افزایش یابد.
+به همین منظور به طور تصادفی از صد مشتری خود اطلاعات مصرف جمع آوری می نماید.
+با توجه به داده های که داده شده آیا ربط معناداری بین فروش این دو محصول وجود دارد؟
+</p>
+
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+consumption <- read_csv("/Users/deyapple/Documents/Courses/Term04/DA/Homework/hw_05/data/consumption.csv")
+```
+
+<p dir="RTL"> 
+میخواهیم تاثیر دو متغیر را بر همدیگر بررسی کنیم. به عبارتی میخواهیم ببینیم آیا افزایش فروش محصول A موجب افزایش فروش محصول B نیز میشود؟
+</p>
+
+<p dir="RTL"> 
+از Correlation test برای بررسی میزان همبستگی دو متغیر استفاده میشود.
+</p>
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0$: Product B's sales are not affected by product A's sales.} \\
+    \text{$H_A$: Product B's sales are affected by product A's sales.}
+  \end{cases}
+\end{equation}
+\]
+
+<p dir="RTL"> 
+طبق نوشته های بالا استفاده از correlation test مناسب می باشد
+</p>
+
+```{r}
+cor.test(consumption$A, consumption$B, method = "spearman")
+```
+
+<p dir="RTL"> 
+به علت محاسبه ی $p-value$ بالا نمیتوان فرض صفر را رد کرد پس میتوان نتیجه گرفت که همبستگی میزان فروش دو محصول کم است به این معنی که فروش محصول A تاثیری در فروش محصول B نداشته است.
+</p>
+
+***
+***
+<h1 dir = "RTL">
+### سوال هشتم: بررسی تاثیر جنسیت بر مشخصه ی کاربری
+</h1>
+
+<p dir="RTL"> 
+یک شرکت از ۲۰۰۰ نفر از مشتریان خود عامل خرید محصول را مورد سوال قرار میدهد 
+که خلاصه اطلاعات آن را در زیر می توانید مشاهده کنید
+</p>
+
+| Characteristics	| Male	| Female |
+| :---: |  :---:  | :---: |
+| Price	| 301	| 502 |
+| Design	| 353	| 155 |
+| Color	| 558	| 153 |
+
+<p dir="RTL"> 
+آیا جنسیت تاثیری در مشخصه کاربری کالا دارد؟
+</p>
+
+***
+
+> <p dir = "RTL">
+پاسخ:
+</p>
+
+```{r}
+stat8 <- matrix(data = c(301, 353, 558, 502, 155, 153), 
+                    nrow = 3 , ncol = 2, 
+                    dimnames = list(c("Price", "Desing", "Color"), 
+                                      c("Male" , "Female")))
+```
+
+
+
+<p dir="RTL"> 
+در این سوال نیز یک سری متغیر categorical داریم و میخواهیم ببینیم آیا بین این ها رابطه ی معناداری وجود دارد یا نه. 
+</p>
+
+\[
+\begin{equation}
+  \begin{cases}
+    \text{$H_0$: Gender does not have an effect on the product's characteristics.} \\
+    \text{$H_A$: Gender has an effect on the product's characteristics.}
+  \end{cases}
+\end{equation}
+\]
+
+<p dir="RTL"> 
+مشابه با دلایل آورده شده برای سوال ۶, برای این سوال نیز میتوان از chi-square test استفاده کرد.
+</p>
+
+```{r}
+chisq.test(stat8)
+```
+
+<p dir="RTL"> 
+به علت محاسبهی $p-value$ پایین میتوان فرض صفر را رد کرد به این معنی که جنسیت تاثیری در مشخصه ی کاربری کالا دارد.
+</p>
+
+

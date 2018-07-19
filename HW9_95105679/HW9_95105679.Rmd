@@ -1,0 +1,818 @@
+---
+title: "Tenth Week: Principal Component Analysis and Factor Analysis"
+subtitle: "PCA Stock, image, ..."
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+
+> <p dir="RTL"> 
+با استفاده از داده های OHLCV شرکت های تشکیل دهنده شاخص s&p500 و همچنین داده مربوط به شاخص های اقتصادی به سوالات زیر پاسخ دهید.
+</p>
+
+***
+
+```{r setup, include=FALSE, warning = F}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,warning = F,fig.width = 10,fig.height = 8,fig.align ="center",fig.retina=1)
+setwd("/Users/deyapple/Desktop/")
+library(tidyverse)
+library(highcharter)
+library(plotly)
+```
+
+
+<h1 dir = "RTL"> 
+خواندن داده ها
+</h1>
+
+```{r}
+constituents <- read_csv("class_data/constituents.csv")
+indexes <- read_csv("class_data/indexes.csv") 
+files <- list.files("class_data/stock_dfs/")
+stocks = list()
+
+for (i in 1:length(files)) {
+  temp <- read_csv(paste("class_data/stock_dfs", files[i], sep = "/"))  %>%
+    mutate(name = str_remove(files[i], ".csv"))
+  stocks[[i]] = temp
+}
+rm(temp)
+stocks <- stocks %>% bind_rows()
+```
+
+
+<p dir="RTL">
+۱. چه شرکتی رکورددار کسب بیشترین سود در بازه یکساله، دو ساله و پنج ساله می باشد؟ این سوال را برای بخش های مختلف مورد مطالعه قرار دهید و رکورددار را معرفی کنید. (برای این کار به ستون sector داده constituents مراجعه کنید.) برای هر دو قسمت نمودار سود ده شرکت و یا بخش برتر را رسم نمایید.
+</p>
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+<h2 dir="RTL">
+آماده سازی داده
+</h2>
+
+```{r}
+income.stat <- stocks %>%
+  mutate(Date = as.Date(Date)) %>%
+  mutate(year = format(Date, "%Y") %>% as.numeric(),
+         month = format(Date, "%m") %>% as.numeric(),
+         day = format(Date, "%d") %>% as.numeric()) %>%
+  mutate(profit = Close - Open)
+
+income.sector.stat <- full_join(income.stat, constituents %>% select(Symbol, Sector), 
+                                by = c("name" = "Symbol"))
+
+income.sector.stat <- income.sector.stat %>%
+  group_by(name, year, month) %>%
+  filter(Date == min(Date)) %>%
+  mutate(time = 12 * year + month) %>%
+  group_by(name) %>%
+  mutate(yearOpen = lag(Open, 12), 
+         twoyearOpen = lag(Open, 24), 
+         fiveyearOpen = lag(Open, 60)) %>%
+  mutate(yearProf = Open - yearOpen, 
+         twoyearProf = Open - twoyearOpen, 
+         fiveyearProf = Open - fiveyearOpen)
+```
+
+<h2 dir="RTL">
+شرکت رکورددار کسب بیشترین سود در بازه یکساله، دوساله و ۵ساله:
+</h2>
+
+
+<h3 dir="RTL">
+یکساله:
+</h3>
+```{r}
+year.prof <- income.sector.stat %>%
+  select(name, yearProf) %>%
+  filter(!is.na(yearProf)) %>%
+  group_by(name) %>%
+  filter(yearProf == max(yearProf)) %>% 
+  ungroup() %>%
+  arrange(desc(yearProf))
+
+year.prof %>% head(1)
+```
+
+
+<h3 dir="RTL">
+دوساله:
+</h3>
+```{r}
+twoyear.prof <- income.sector.stat %>%
+  select(name, twoyearProf) %>%
+  filter(!is.na(twoyearProf)) %>%
+  group_by(name) %>%
+  filter(twoyearProf == max(twoyearProf)) %>% 
+  ungroup() %>%
+  arrange(desc(twoyearProf)) 
+
+twoyear.prof %>% head(1)
+```
+
+
+<h3 dir="RTL">
+۵ ساله:
+</h3>
+```{r}
+fiveyear.prof <- income.sector.stat %>%
+  select(name, fiveyearProf) %>%
+  filter(!is.na(fiveyearProf)) %>%
+  group_by(name) %>%
+  filter(fiveyearProf == max(fiveyearProf)) %>% 
+  ungroup() %>%
+  arrange(desc(fiveyearProf)) 
+
+fiveyear.prof %>% head(1)
+```
+
+<h2 dir="RTL">
+شرکت رکورددار کسب بیشترین سود در بازه یکساله، دوساله و ۵ساله در هر بخش:
+</h2>
+
+<h3 dir="RTL">
+یکساله
+</h3>
+
+```{r}
+income.sector.stat %>%
+  select(name, Sector, yearProf) %>%
+  filter(!is.na(Sector)) %>%
+  filter(!is.na(yearProf)) %>%
+  group_by(name) %>%
+  filter(yearProf == max(yearProf)) %>% 
+  ungroup() %>%
+  group_by(Sector) %>%
+  arrange(desc(yearProf)) %>%
+  mutate(rank = rank(-yearProf)) %>% 
+  filter(rank == 1)
+```
+
+
+<h3 dir="RTL">
+دوساله
+</h3>
+
+```{r}
+income.sector.stat %>%
+  select(name, Sector, twoyearOpen) %>%
+  filter(!is.na(Sector)) %>%
+  filter(!is.na(twoyearOpen)) %>%
+  group_by(name) %>%
+  filter(twoyearOpen == max(twoyearOpen)) %>% 
+  ungroup() %>%
+  group_by(Sector) %>%
+  arrange(desc(twoyearOpen)) %>%
+  mutate(rank = rank(-twoyearOpen)) %>% 
+  filter(rank == 1)
+```
+
+
+<h3 dir="RTL">
+۵ ساله
+</h3>
+
+```{r}
+income.sector.stat %>%
+  select(name, Sector, fiveyearProf) %>%
+  filter(!is.na(Sector)) %>%
+  filter(!is.na(fiveyearProf)) %>%
+  group_by(name) %>%
+  filter(fiveyearProf == max(fiveyearProf)) %>% 
+  ungroup() %>%
+  group_by(Sector) %>%
+  arrange(desc(fiveyearProf)) %>%
+  mutate(rank = rank(-fiveyearProf)) %>% 
+  filter(rank == 1)
+```
+
+<h2 dir="RTL">
+نمودار ۱۰ شرکت برتر
+</h2>
+
+<h3 dir="RTL">
+یکساله
+</h3>
+
+```{r}
+year.prof %>%
+  head(10) %>%
+  hchart(type = 'column', hcaes(x = name, y = yearProf %>% round(2)), name = "Profit", color = '#E8AAEF', borderColor = 'black') %>%
+  hc_title(text = 'Top 10 Companies',
+           align = 'center') %>% 
+  hc_subtitle(text = 'Highest Profit in A One Year Interval', align = 'center') %>%
+  hc_xAxis(title = list(text = "",style = list(color = "white")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>%
+  hc_yAxis(title = list(text = "Yearly Profit",style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+```
+
+
+<h3 dir="RTL">
+دو ساله
+</h3>
+```{r}
+twoyear.prof %>%
+  head(10) %>%
+  hchart(type = 'column', hcaes(x = name, y = twoyearProf %>% round(2)), name = "Profit", color = '#93C5F7', borderColor = 'black') %>%
+  hc_title(text = 'Top 10 Companies',
+           align = 'center') %>% 
+  hc_subtitle(text = 'Highest Profit in A One Year Interval', align = 'center') %>%
+  hc_xAxis(title = list(text = "",style = list(color = "white")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>%
+  hc_yAxis(title = list(text = "Two Year Profit",style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+```
+
+
+<h3 dir="RTL">
+۵ ساله
+</h3>
+
+```{r}
+fiveyear.prof %>%
+  head(10) %>%
+  hchart(type = 'column', hcaes(x = name, y = fiveyearProf %>% round(2)), name = "Profit", color = '#F6FF9F', borderColor = 'black') %>%
+  hc_title(text = 'Top 10 Companies',
+           align = 'center') %>% 
+  hc_subtitle(text = 'Highest Profit in A One Year Interval', align = 'center') %>%
+  hc_xAxis(title = list(text = "",style = list(color = "white")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>%
+  hc_yAxis(title = list(text = "Five Year Profit",style = list(color = "white",
+                                                            fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+```
+
+***
+
+<p dir="RTL">
+۲. یک اعتقاد خرافی می گوید خرید سهام در روز سیزدهم ماه زیان آور است. این گزاره را مورد ارزیابی قرار دهید.
+</p>
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+
+<p dir="RTL">
+میخواهیم تست کنیم که آیا میانگین سود شرکتها در روز سیزدهم ماه، کمتر از صفر است یا نه. 
+در واقع فرض صفر این است که میانگین سود شرکت ها در روز سیزدهم ماه کمتر از صفر است، و فرض دیگر این است که بیشتر یا مساوی صفر است. 
+</p>
+
+
+<p dir="RTL">
+برای اینکه بفهمیم چه آزمون فرضی را باید استفاده کنیم، نمودار سود در روز سیزدهم را میکشیم تا تخمینی از توزیعشان داشته باشیم:
+</p>
+
+```{r}
+thirteenth <- income.stat %>% filter(day == 13)
+
+
+
+## test for normality
+
+ggplot(thirteenth) + 
+  geom_density(aes(x = profit), fill = "#E5A5B0", color = 'black') + 
+  theme_minimal()
+
+qqnorm(thirteenth$profit)
+qqline(thirteenth$profit, col = 2)
+```
+
+
+<p dir="RTL">
+چون قله ی داده ها خیلی تیز است، استفاده از t.test که مخصوص داده های نرمال است خیلی مناسب به نظر نمیرسد. 
+همچنین در دو سر نمودار بالا، داده ها خیلی از خط نرمال دور هستند.
+</p>
+
+<p dir="RTL">
+از آزمون فرض غیر پارامتری wilcoxon استفاده میکنیم.
+</p>
+
+```{r}
+wilcox.test(thirteenth$profit, alternative = "greater")
+```
+
+<p dir="RTL">
+با توجه به پی-مقدار به دست آمده نمیتوان این فرض خرافاتی را رد کرد.
+</p>
+***
+
+<p dir="RTL">
+۳. رکورد بیشترین گردش مالی در تاریخ بورس برای چه روزی بوده است و چرا!!!
+</p>
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+```{r}
+income.stat %>%
+  group_by(Date) %>%
+  summarise(trade = sum(Volume * (High - Low))) %>%
+  arrange(desc(trade)) %>% head(1)
+```
+
+
+<p dir="RTL">
+بیشترین گردش مالی در تاریخ ۱۰ اکتبر ۲۰۰۸ رخ داده است که همان تاریخ بحران جهانی اقتصادی ۲۰۰۸ است.
+</p>
+
+<p dir="RTL">
+برای اطلاعات بیشتر به 
+<a href="https://www.money-zine.com/investing/stocks/stock-market-crash-of-2008/">اینجا</a>
+مراجعه کنید
+</p>
+
+***
+
+<p dir="RTL">
+۴. شاخص AAPL که نماد شرکت اپل است را در نظر بگیرید. با استفاده از رگرسیون خطی یک پیش کننده قیمت شروع (open price) بر اساس k روز قبل بسازید. بهترین انتخاب برای k چه مقداری است؟ دقت پیش بینی شما چقدر است؟
+</p>
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+
+<p dir="RTL">
+برای این سوال k را از ۲ تا ۲۰ در نظر گرفتهایم. بدین صورت که در هر مرحله ستون open از دیتافریم apple را به دستههای k+1 تایی تقسیم کرده ایم و در ماتریسی قرار داده ایم. در هر سطر از این ماتریس، predictor ها ستونهای 1 تا k هستند و response ستون k + 1 است. 
+	در نهایت روی این ماتریس با استفاده از h2o رگرشن میزنیم
+</p>
+
+```{r, message=F, warning = F}
+Apple <- income.stat %>% filter(name == "AAPL")
+library(h2o)
+h2o.init()
+mses <- c()
+for(k in 2:20){
+  temp <- Apple$Open %>%
+          matrix(ncol = k + 1, byrow = TRUE) %>%
+          as.data.frame()
+  happle = as.h2o(temp)
+  hglm = h2o.glm(y = paste0("V", k + 1),
+                 training_frame = happle)
+  mses[k] = h2o.mse(hglm)
+}
+```
+
+
+<p dir="RTL">
+کمترین مقدار خطا:
+</p>
+
+```{r}
+mses.df <- mses %>% as.data.frame() %>% mutate(k = row_number())
+colnames(mses.df) <- c("MSE", "k")
+mses.df %>%  filter(MSE == min(MSE, na.rm = T))
+```
+
+***
+
+<p dir="RTL">
+۵. بر روی داده های قیمت شروع شرکت ها الگوریتم pca را اعمال کنید. نمودار تجمعی درصد واریانس بیان شده در مولفه ها را رسم کنید. سه مولفه اول چند درصد از واریانس را تبیین می کند؟
+</p>
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+<p dir="RTL">
+برای اینکه تعداد زیادی از داده ها از دست نرود، تنها ستونهایی را حذف میکنیم که تعداد na های آنها زیاد باشد.
+</p>
+```{r}
+open.stat <- income.stat %>%
+  select(Date, Open, name) %>%
+  mutate(Open = as.numeric(Open)) %>%
+  spread(name, Open) %>%
+  select_if(function(col) sum(is.na(col)) < 500) %>%
+  na.omit(center = T)
+```
+
+
+<p dir="RTL">
+اعمال کردن pca:
+</p>
+```{r}
+pca.open <- prcomp(open.stat %>% select(-Date), center=T, scale.=T)
+```
+
+<p dir="RTL">
+به دست آوردن واریانس ها
+</p>
+
+```{r}
+sdevs <- pca.open$sdev^2 %>%
+  as.data.frame()
+names(sdevs) <- c("variance")
+sdevs <- sdevs %>%
+  arrange(desc(variance)) %>%
+  mutate(perc = variance / sum(variance)) %>%
+  mutate(perc_ac = cumsum(perc)) %>%
+  mutate(pc = rank(-perc))
+```
+
+<p dir="RTL">
+نمودار تجمعی درصد واریانس بیان شده
+</p>
+
+```{r}
+sdevs %>% 
+  head(20) %>% 
+  hchart(type = "spline" , 
+         hcaes(x = pc , y = perc_ac), 
+         color = 'orange', name = "Cumulative Sum of % of Variance Explained") %>%
+  hc_add_series(sdevs %>% head(20), "column", 
+                hcaes(x = pc, y = perc), 
+                name = "% of Variance Explained", 
+                color = '#D43A53', borderColor = 'black') %>%
+  hc_title(text = 'PCA Analysis',
+           align = 'center') %>% 
+  hc_subtitle(text = 'Top 20 Components', align = 'center') %>%
+  hc_xAxis(title = list(text = '#PCA Components')) %>% 
+  hc_yAxis(title = list(text = 'Sum of Variance')) %>%
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+```
+
+<p dir="RTL">
+سه مولفه اول چند درصد از واریانس را تبیین می کند؟
+</p>
+
+```{r}
+sdevs %>% filter(pc == 3) %>% select(pc, perc_ac)
+```
+
+
+
+***
+
+<p dir="RTL">
+۶. برای هر نماد اطلاعات بخش مربوطه را از داده constituents استخراج نمایید. برای هر بخش میانگین روزانه قیمت شروع شرکت های آن را محاسبه کنید. سپس با استفاده از میانگین به دست آمده  داده ایی با چند ستون که هر ستون یک بخش و هر سطر یک روز هست بسازید. داده مربوط را با داده شاخص های اقتصادی ادغام کنید. بر روی این داده pca بزنید و نمودار biplot آن را تفسیر کنید.
+</p>
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+
+```{r}
+sector.stat <- left_join(income.stat, constituents %>% select(Symbol, Sector), 
+                                               by = c("name" = "Symbol")) %>%
+  select(Sector, name, Open, Date) %>%
+  mutate(Data = as.Date(Date)) %>%
+  group_by(Sector, Date) %>%
+  dplyr::summarise(meanOpen = mean(Open, na.rm = T)) %>%
+  drop_na() %>% 
+  spread(Sector, meanOpen) %>%
+  drop_na()
+
+sector.index.stat <- full_join(sector.stat, indexes %>% mutate(Date = as.Date(Date))) %>%
+  drop_na()
+rownames(sector.index.stat) = sector.index.stat$Date
+pca.sector <- prcomp(sector.index.stat %>% select(-Date), center=T, scale. = T)
+biplot(pca.sector, cex = 0.7)
+```
+
+
+<p dir="RTL">
+همبستگی (correlation) بین متغیرها با کسینوس زاویه بین بردارهای متناظرشان مرتبط است. یعنی هرچه زاویهی بین بردار ها نزدیک تر به صفر باشد correlation متغیر ها بالاتر، هرچه نزدیک در به ۹۰ درجه باشد یعنی correlation ندارند و هر چه نزدیک تر به ۱۸۰ درجه باشد (جهت مخالف) یعنی همبستگی منفی دارند. 
+</p>
+
+<p dir="RTL">
+برای مثال در اینجا Consumer Price Index با Long Interest Rate رابطهی کاملا برعکس دارند، در حالی که این دو با Real Price رابطه ندارند اصلا. البته این اطلاعات به دست آمده از روی نمودار نسبی است و نمیتوان کاملا دقیق و با اطمینان صددرصد این گزاره ها را بیان کرد.
+</p>
+
+<p dir="RTL">
+همچنین میتوان همجهت بودن بردارها را اینگونه تلقی کرد که اینها در رابطه با توضیح داده ها معنی یکسانی دارند و مشابه با همدیگر هستند.
+
+</p>
+
+<p dir="RTL">
+همچنین دادههای مشکی، که نشاندهندهی روزها (سطرهای دیتافریم) هستند هر جا نزدیک به هم باشند یعنی عملکرد آن روز ها بر اساس PCA اعمال شده شبیه است. 
+</p>
+
+
+<p dir="RTL">
+همچنین با تصویر کردن داده ها در جهت محور ها میتوان فهمید که کدام مولفه واریانس بیشتری را پوشش میدهد. اگر داده ها را روی محور PC1 تصویر کنیم، نسبت به تصویر کردن آنها روی PC2 واریانس بیشتری دارند. 
+</p>
+
+
+
+
+***
+
+<p dir="RTL">
+۷. روی همه اطلاعات (OHLCV) سهام اپل الگوریتم PCA را اعمال کنید. سپس از مولفه اول برای پیش بینی قیمت شروع سهام در روز آینده استفاده کنید. به سوالات سوال ۴ پاسخ دهید. آیا استفاده از مولفه اول نتیجه بهتری نسبت به داده open price برای پیش بینی قیمت دارد؟
+</p>
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+
+<p dir="RTL">
+مانند سوال ۴، داده را به ماتریس تبدیل میکنیم با این تفاوت که مقدار open را از داخل دادهی سوال ۴ به دست میآوریم 
+</p>
+
+
+```{r, message=F, warning=F}
+Apple.pca <- prcomp(Apple %>% select(Open, Close, High, Low, Volume))$x
+Apple.info <- cbind(Apple.pca, Apple %>% select(Open, Close, High, Low, Volume))
+mses.pca = c()
+
+for (k in 2:20) {
+  Apple.info$Open %>%
+    matrix(ncol = k + 1, byrow = TRUE) %>% as.data.frame() -> Opens
+  Apple.info$PC1 %>%
+    matrix(ncol = k + 1, byrow = TRUE) %>% as.data.frame() -> PC1s
+  colnames(Opens) = c(paste("V", 1:k), "Next Day Open")
+  colnames(PC1s) = c(paste("V", 1:k), "Next Day Open")
+  PC1s$`Next Day Open` = Opens$`Next Day Open`
+  hApple = as.h2o(PC1s)
+  hglm = h2o.glm(y = "Next Day Open", training_frame = hApple)
+  mses.pca[k] = h2o.mse(hglm)
+}
+```
+
+<p dir="RTL">
+کمینه مقدار MSE به ازای پیشبینی با PCA را به دست میآوریم:
+</p>
+
+```{r}
+mses.pca.df <- mses.pca %>% as.data.frame() %>% mutate(k = row_number())
+colnames(mses.pca.df) <- c("PCA MSE", "k")
+mses.pca.df %>% filter(`PCA MSE` == min(`PCA MSE`, na.rm = T))
+```
+
+
+<p dir="RTL">
+مقایسهی پیشبینی سوال ۷ و سوال ۴:
+</p>
+
+```{r}
+mse.comp <- full_join(mses.pca.df, mses.df, by = c('k')) %>%
+  gather(key = "Model", value = "Error", c(1, 3)) %>% drop_na()
+mse.comp %>%
+  hchart(type = 'column', hcaes(x = k, y = Error, group = Model)) %>%
+  hc_xAxis(title = list(text = "K",
+                        style = list(color = "black", fontSize = '18px'))) %>%
+  hc_yAxis(title = list(text = "Mean Squared Error",
+                        style = list(color = "black", fontSize="18px"))) %>% 
+  hc_legend(align = 'right') %>%
+  hc_add_theme(hc_theme_merge(hc_theme_538(colors = c("#0D44B2", "#B20D65"))))
+```
+
+<p dir="RTL">
+همانطور که واضح است، PCA به مراتب بدتر عمل کرده است. 
+</p>
+
+***
+
+<p dir="RTL">
+۸. نمودار سود نسبی شاخص s&p500 را رسم کنید. آیا توزیع سود نرمال است؟(از داده indexes استفاده کنید.)
+با استفاده از ده مولفه اول سوال پنج آیا می توانید سود و ضرر شاخص s&p500 را برای روز آينده پیش بینی کنید؟ از یک مدل رگرسیون لاجستیک استفاده کنید. درصد خطای پیش بینی را به دست آورید.
+</p>
+
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+<p dir="RTL">
+ابتدا سود نسبی شاخص مورد نظر را بدین صورت بدست می آوریم:
+</p>
+
+```{r}
+sp500.prof <- indexes %>%
+  mutate(rel.prof = (SP500 - lag(SP500)) / lag(SP500)) %>%
+  mutate(state = ifelse(rel.prof > 0, 1, 0))
+```
+
+<p dir="RTL">
+حال برای بررسی نرمال بودن دو نمودار زیر را رسم میکنیم:
+</p>
+
+```{r}
+ggplot(sp500.prof) + 
+  geom_density(aes(x = rel.prof), fill = 'pink', color = 'black', alpha = 0.8) + 
+  theme_minimal()
+  
+
+qqnorm(sp500.prof$rel.prof)
+qqline(sp500.prof$rel.prof, col = 2)
+```
+
+<p dir="RTL">
+به نظر میرسد داده ها خیلی نرمال باشند :))
+</p>
+
+<p dir="RTL">
+حال دادهی pca سوال ۵ را در نظر میگیریم. ۱۰ مولفه اول آن را به ستون تاریخ داده ی استفاده شده برای ساختن آن pca وصل میکنیم. (با استفاده از `cbind`). این داده را با دادهی ساخته شده در بالا `inner_join` میکنیم. 
+</p>
+
+<p dir="RTL">
+در نهایت دیتافریم به وجود آمده، یک ستون Date دارد به همراه ۱۰ ستون که مولفههای PCA سوال ۵ هستند و یک ستون که نشاندهندهی سود یا ضرر شاخص موردنظر است. 
+</p>
+
+```{r}
+sp500.pca <- cbind(pca.open$x %>% as.data.frame() %>% dplyr::select(PC1:PC10), 
+                   open.stat %>% dplyr::select(Date))
+train.sp500 <- inner_join(sp500.pca, sp500.prof, by = "Date")
+```
+
+
+<p dir="RTL">
+حال با استفاده از h2o یک مدل رگرسیون لاجیستیک اعمال میکنیم:
+</p>
+
+```{r}
+hsp500 <- as.h2o(train.sp500)
+hglm.sp500 = h2o.glm(y = "state", training_frame = hsp500, family = "binomial", nfolds = 5)
+summary(hglm.sp500)
+```
+
+<p dir="RTL">
+در خلاصه ی بالا، به بخش های accuracy, mse و logloss اگر دقت کنیم میبینیم که مدلمان خیلی خوب عمل کرده است. 
+</p>
+
+***
+
+<p dir="RTL"> 
+۹. عکسی که در ابتدای متن آمده را در نظر بگیرید. با استفاده از pca عکس را فشرده کنید. سپس نمودار حجم عکس فشرده بر حسب تعداد مولفه اصلی را  رسم کنید. بهترین انتخاب برای انتخاب تعداد مولفه ها در جهت فشرده سازی چه عددی است؟
+</p>
+
+
+> <p dir="RTL"> 
+پاسخ:
+</p>
+
+<p dir="RTL"> 
+ابتدا عکس را  با pca فشرده میکنیم. 
+</p>
+
+```{r}
+library("EBImage")
+pic = flip(readImage("stock.jpg")) 
+red.weigth   = imageData(pic)[,,1]
+green.weigth = imageData(pic)[,,2]
+blue.weigth  = imageData(pic)[,,3]
+img = red.weigth * imageData(pic)[, , 1] +
+  green.weigth * imageData(pic)[, , 2] + blue.weigth  * imageData(pic)[, , 3]
+
+pca.img = prcomp(img, scale. = T)
+```
+
+
+<p dir="RTL"> 
+حال جمع واریانس مولفه ها را بدست میاوریم
+</p>
+
+<p dir="RTL"> 
+همچنین تعداد مولفه ای که جمع واریانسشان ۹۸ درصد واریانس کل است را نیز بدست میاوریم.
+این تعداد مولفه را به عنوان بهترین انتخاب در نظر میگیریم. در نمودار هایی که بعدا کشیده خواهد شد نیز این مقدار خوب به نظر میرسد. 
+</p>
+
+```{r}
+sdevs.img <- pca.img$sdev^2 %>%
+  as.data.frame()
+names(sdevs.img) <- c("sd")
+sdevs.img <- sdevs.img %>%
+  arrange(desc(sd)) %>%
+  mutate(perc = sd / sum(sd)) %>%
+  mutate(perc_ac = cumsum(perc)) %>%
+  mutate(pc = rank(-perc))
+vars <- (sdevs.img %>% filter(perc_ac > .98) %>% head(1))$pc
+vars
+```
+
+```{r}
+plot(summary(pca.img)$importance[3,], type="l",
+     ylab="%variance explained", xlab="nth component (decreasing order)")
+abline(h=0.98,col="red");abline(v = vars,col="red",lty=3)
+```
+
+<p dir="RTL"> 
+برای وضوح بیشتر با highcharter نیز نمودار را کشیده ام:
+</p>
+
+```{r}
+title = list(text = "Yearly Profit",style = list(color = "white", fontSize="20px"))
+
+sdevs.img %>% 
+  head(20) %>% 
+  hchart(type = "spline" , hcaes(x = pc , y = perc_ac), color = 'orange') %>%
+  hc_add_series(sdevs.img %>% head(20), "column", hcaes(x = pc, y = perc),name = "Average Score", color = '#EDF69D', borderColor = 'black') %>%
+  hc_title(text = 'Picture PCA Analysis',
+           align = 'center') %>% 
+  hc_subtitle(text = 'Top 20 Components', align = 'center') %>%
+  hc_xAxis(title = list(text = '#PCA Components')) %>% 
+  hc_yAxis(title = list(text = 'Cumulative Sum of % of Variance Explained', style = list(fontSize="18px"))) %>%
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+
+
+sdevs.img %>%
+  hchart(type = 'spline', hcaes(x = pc, y = perc_ac %>% round(5)), color = '#EAF588') %>%
+  hc_title(text = 'Picture PCA Analysis',
+           align = 'center') %>% 
+  hc_subtitle(text = 'All Components', align = 'center') %>%
+  hc_xAxis(title = list(text = '#PCA Components')) %>% 
+  hc_yAxis(title = list(text = 'Cumulative Sum of % of Variance Explained', style = list(fontSize="18px"))) %>%
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+```
+
+<p dir="RTL"> 
+برای بدست آوردن حجم عکس ها از دو روش استفاده کرده ام. 
+</p>
+
+
+<p dir="RTL"> 
+در روش اول، تک تک عکس ها را کشیده و ذخیره میکنم و حجم هر یک را بدست می آورم.
+</p>
+
+```{r}
+sizes1 <- c()
+n1 <- sdevs.img %>% nrow()
+i <- 5
+while(i <= n1){
+  chosen.components = 1:i
+  feature.vector = pca.img$rotation[,chosen.components]
+  feature.vector[1:10,1:5] 
+  compact.data = t(feature.vector) %*% t(img) 
+  approx.img = t(feature.vector %*% compact.data)
+  png(filename = paste0(i, ".png"))
+  image(approx.img, col = grey(seq(0, 1, length = 256)))
+  dev.off()
+  sizes1[i] <- file.info(paste0(i, ".png"))$size
+  i <- i + 10
+}
+
+data1 <- as.data.frame(sizes1) %>% select(`Image Size` = sizes1) %>%
+  drop_na()
+data1$`Number of Principal Components` <- seq(from = 5, to = n1, by = 10)
+data1 %>%
+  hchart(type = 'column', hcaes(x = `Number of Principal Components`, y = `Image Size`), 
+         name = "Image Size (Bytes)") %>%
+  hc_title(text = 'Image Size Based on Number of Components',
+           align = 'center') %>% 
+  hc_xAxis(title = list(text = '#PCA Components')) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_google()))
+```
+
+<p dir="RTL"> 
+این روش، با وجود اینکه تعداد مولفه های انتخابی را ۱۰ تا ۱۰ تا زیاد کرده ام، همچنان زیاد زمان میبرد.
+</p>
+
+<p dir="RTL"> 
+روش بعدی استفاده از `object.size` است.
+</p>
+
+```{r}
+sizes2 <- c()
+n2 <- sdevs.img %>% nrow()
+for(i in 5:n2){
+  chosen.components = 1:i
+  feature.vector = pca.img$rotation[,chosen.components]
+  feature.vector[1:10,1:5] 
+  compact.data = t(feature.vector) %*% t(img) 
+  approx.img = t(feature.vector %*% compact.data)
+  save.size = object.size(compact.data) + object.size(feature.vector)
+  sizes2[i - 4] <- save.size
+}
+
+data2 <- as.data.frame(sizes2) %>% select(`Image Size` = sizes2)
+data2$`Number of Principal Components` <- seq(from = 5, to = n2)
+data2 %>%
+  hchart(type = 'column', hcaes(x = `Number of Principal Components`, y = `Image Size`), 
+         name = "Image Size (Bytes)") %>%
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_google()))
+```
+
+
+
+***
+
+<p dir="RTL"> 
+۱۰. پنج ایده جالبی که روی داده های مالی بالا می توانستیم پیاده کنیم را بیان کنید. (ایده کافی است نیازی به محاسبه بر روی داده نیست.)
+</p>
+
+
+<ul dir = "RTL">
+  <li>بیشترین میزان نوسانات سهام در یک ماه/شرکت/بخشین</li>
+  <li>به دست آوردن رقیبان یک شرکت.</li>
+  <li>از لحاظ تاریخی، ۷۵ درصد سهام هم جهت با عموم بازار پیشرفت و یا پسرفت میکند. بررسی صحت این ادعا و همچنین بررسی اینکه آیا این همجهت بودن به نفع سهام شرکت است یا نه؟</li>
+  <li>پیدا کردن پایینترین قیمت سهام. همچنین پیدا کردن بهترین Comeback، به معنای پیدا کردن بیشترین اختلاف بین افت قیمت و رشد آن.</li>
+  <li>
+دسته بندی کردن شرکت ها به سیاستهای اقتصادی مختلفی که استفاده میکنند(شرکتهای با سیاست اقتصادی مشابه در یک دسته قرار بگیرند) </li>
+</ul> 
+
+

@@ -1,0 +1,610 @@
+---
+title: "second week: Introduction to R and Rstudio"
+subtitle: "Mobile Data"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+<div align="center">
+<img  src="images/smartphones.jpg"  align = 'center'>
+</div>
+
+<h1 dir="RTL"> 
+تمرین سری دوم: تلفن همراه شناسی!
+</h1>
+
+> <p dir="RTL"> 
+ با استفاده از داده های گوشی های همراه به سوالات زیر پاسخ دهید. 
+برای رسم نمودار از پکیج 
+ggplot2
+استفاده کنید.
+</p>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 10,fig.height = 6,fig.align ="center")
+```
+
+***
+<p dir="RTL">
+ابتدا کتابخانه های مورد نیاز را فراخوانی میکنیم : 
+</p>
+
+```{r, message = FALSE}
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(readr)
+library(stringr)
+
+```
+
+<p dir="RTL">
+سپس داده را میخوانیم :
+</p>
+
+```{r, message = FALSE}
+mobile <- read_csv("/Users/deyapple/Documents/Courses/Term04/DA/mobile_data.csv")
+```
+<p dir="RTL">
+
+حال با استفاده از داده که در `mobile` قرار دارد به سوالات جواب میدهیم :
+</p>
+
+<p dir="RTL">
+۱. کدام شرکت بیشترین تعداد گوشی را تولید کرده است؟
+نمودار ستونی ۲۰ شرکت برتر بر حسب تعداد گوشی تولید کرده را رسم کنید.
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+```{r}
+
+countstat <- mobile %>% 
+  group_by(company) %>% 
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  slice(1:20)
+
+countstat$company <- factor(countstat$company, 
+                            levels = countstat$company[order(countstat$count)])
+
+ggplot(data = countstat) + 
+  geom_bar(aes(x = company, y = count), stat = "identity", fill = "blue4", color = "black") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  labs(title = "Companies With Maximum Device Count", 
+       x = "Company", y = "Device Count")
+
+```
+
+
+***
+
+<p dir="RTL">
+۲. نمودار زمانی طول عرض  ضخامت و کیفیت دوربین گوشی ها را بکشید
+ و به نمودار هر یک مدل خطی اضافه کنید.
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+```{r}
+lengthstat <- mobile %>% filter(!is.na(year) & !is.na(dim_length))
+ggplot(data = lengthstat, aes(x = year, y = dim_length)) + 
+  geom_count(col = "firebrick") +
+  theme(legend.title = element_text(size=12, color = "firebrick", hjust = "center", vjust = "center"), 
+        legend.justification=c(0,1), 
+        legend.position=c(0.05, 0.95),
+        legend.background = element_blank(),
+        legend.key = element_blank(), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(title = "Length vs. Year", 
+       x = "Year", y = "Device Length (mm)") + 
+  guides(size=guide_legend(title="count")) + 
+  scale_x_discrete(limit = lengthstat$year) + 
+  geom_smooth(method = "lm")
+```
+
+```{r}
+breadthstat <- mobile %>% filter(!is.na(year) & !is.na(dim_breadth))
+ggplot(data = breadthstat, aes(x = year, y = dim_breadth)) + 
+  geom_count(col = "blue4") +
+  theme(legend.title = element_text(size=12, color = "blue4", hjust = "center", vjust = "center"), 
+        legend.justification=c(0,1), 
+        legend.position=c(0.05, 0.95),
+        legend.background = element_blank(),
+        legend.key = element_blank(), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(title = "Breadth vs. Year", 
+       x = "Year", y = "Device Breadth (mm)") + 
+  scale_x_discrete(limit = breadthstat$year) + 
+  guides(size=guide_legend(title="count")) + 
+  geom_smooth(method = "lm", color = "red")
+```
+
+
+```{r}
+thicknessstat <- mobile %>% filter(!is.na(year) & !is.na(dim_thickness))
+ggplot(data = thicknessstat, aes(x = year, y = dim_thickness)) + 
+  geom_count(col = "green4") +
+  theme(legend.title = element_text(size=12, color = "green4", hjust = "center", vjust = "center"), 
+        legend.justification=c(0,1), 
+        legend.position=c(0.05, 0.95),
+        legend.background = element_blank(),
+        legend.key = element_blank(), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(title = "Thickness vs. Year", 
+       x = "Year", y = "Device Thickness (mm)") + 
+  guides(size=guide_legend(title="count")) + 
+  scale_x_discrete(limit = thicknessstat$year) + 
+  geom_smooth(method = "lm", color = "red")
+```
+
+```{r}
+campxstat <- mobile %>% filter(!is.na(year) & !is.na(cam_px))
+ggplot(data = campxstat, aes(x = year, y = cam_px)) + 
+  geom_count(col = "purple4") +
+  theme(legend.title = element_text(size=12, color = "purple4", hjust = "center", vjust = "center"), 
+        legend.justification=c(0,1), 
+        legend.position=c(0.05, 0.95),
+        legend.background = element_blank(),
+        legend.key = element_blank(), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(title = "Camera Pixels vs. Year", 
+       x = "Year", y = "Device Camera Pixels") +
+  guides(size=guide_legend(title="count")) + 
+  scale_x_discrete(limit = campxstat$year) + 
+  geom_smooth(method = "lm", color = "red")
+
+```
+
+
+***
+
+<p dir="RTL">
+۳. نمودار ستونی متوسط قیمت گوشی بر حسب تعداد سیم کارت و دسترسی به 
+LTE
+را رسم نمایید.
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+```{r}
+avgprice <- mobile %>% group_by(sim_no, LTE) %>% 
+  summarise(avg_price = mean(price, na.rm = TRUE))
+
+ggplot(data = avgprice, aes(x = LTE, y = avg_price, fill = LTE)) + 
+  geom_bar(stat = "identity", width = 1) +
+  facet_grid(~sim_no, scales = "fixed", space = "free_x", switch = "both") +
+  theme(strip.placement = "outside") +
+  labs(title = "Average Price based on LTE and Number of Simcards", 
+       x = "Category", y = "Average Price") + 
+  scale_fill_brewer(palette = "Set1")
+```
+
+
+***
+
+<p dir="RTL">
+۴. نمودار جعبه ایی ضحامت گوشی هایی که در سال ۲۰۱۷ معرفی شده اند را برحسب اینکه کمیت جک هدفون رسم نمایید
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+```{r}
+thickness2017 <- mobile %>% 
+  filter(year == 2017) %>%
+  filter(!is.na(dim_thickness))
+ggplot(data = thickness2017, aes(x = audio_jack, y = dim_thickness)) + 
+  geom_boxplot(varwidth = TRUE, fill = "darkseagreen2") + 
+  labs(title = "Thickness of Devices in 2017 based on Audio Jack", 
+       x = "Audio Jack", y = "Thickness (mm)")
+```
+
+***
+
+<p dir="RTL">
+۵. مفهوم 
+ppi 
+را در گوشی های موبایل محاسبه و هیستوگرام آن را رسم نمایید.
+همچنین نمودار سالانه متوسط این کمیت را بکشید.
+کدام گوشی بیشترین
+ppi
+را دارد؟
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+```{r}
+ppistat <- mobile %>% 
+  mutate(ppi = sqrt(px_row ^ 2 + px_col ^ 2) / display_size)
+
+ggplot(data = ppistat) + 
+  geom_histogram(aes(ppi), fill = "orangered4", color = "black", binwidth = 10) + 
+  scale_fill_gradientn(colours = terrain.colors(10)) + 
+  labs(title = "PPI Histogram")
+
+ppiaverage <- ppistat %>% 
+  group_by(year) %>% 
+  summarise(avg = mean(ppi,na.rm = TRUE)) %>%
+  filter(!is.na(year) & !is.na(avg))
+
+ggplot(data = ppiaverage) + 
+  geom_point(aes(x = year, y = avg, color = year)) + 
+  geom_line(aes(x = year, y = avg, color = year), size = 5) + 
+  labs(title = "Average PPI vs. Year")
+
+ppistat$device[which.max(ppistat$ppi)]
+```
+
+
+***
+
+<p dir="RTL">
+۶. در گذشته به بعضی از مدل های گوشی نوکیا 
+**گوشکوب**
+گفته می شد. سعی کنید برای این مفهوم کمیتی مناسب تعریف کنید .
+ ده گوشکوب برتر را پیدا کرده و نمودار گوشکوبیت آن را رسم نمایید.
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+<p dir="RTL">
+ابتدا دادهها را مرتب میکنیم. به این معنی که Tablet ها و Watch ها را از داده ها حذف میکنیم. برای این کار از تابع `str_detect()` واقع در کتابخانه ی `stringr` استفاده میکنیم.
+</p>
+
+```{r}
+
+phones <- mobile %>% filter(sim_no > 0) %>%
+  filter(!str_detect(str_to_lower(device), "watch")) %>% 
+  filter(!str_detect(str_to_lower(device), "tab")) %>% 
+  filter(!str_detect(str_to_lower(os), "watch") | is.na(os)) %>% 
+  filter(!str_detect(str_to_lower(os), "tab") | is.na(os)) %>%
+  filter(!is.na(price)) %>%
+  mutate(density = weight * 1000 / (dim_length * dim_breadth * dim_thickness))
+```
+
+<p dir="RTL">
+برای تعریف گوشکوبیت در مرحله ی قبل ستون چگالی را نیز به داده ها اضافه کردیم.
+حال گوشکوبیت را اینگونه تعریف میکنیم:
+$$thickness* 70 + density * 35 + length * 25 + breadth * 20 - price * 15$$
+</p>
+
+```{r}
+gooshkoobs <- phones %>% 
+  filter(dim_length <= 150 & dim_length >= 100) %>%
+  filter(dim_thickness >= 18) %>%
+  filter(dim_breadth >= 45 & dim_breadth <= 65) %>% 
+  mutate(gooshkoobiat = round(dim_thickness* 70 + density * 35 + dim_length * 25 + dim_breadth * 20 + price * -15)) %>%
+  select(dim_thickness, dim_length, dim_breadth, price, density, 
+         gooshkoobiat, device, company) %>%
+  arrange(desc(gooshkoobiat)) %>%
+  slice(1:10)
+```
+
+```{r}
+gooshkoobs$device <- factor(gooshkoobs$device,
+                            levels = gooshkoobs$device[order(gooshkoobs$gooshkoobiat)])
+ggplot(data = gooshkoobs) +
+  geom_point(aes(device, gooshkoobiat, color = company), stat = "identity", size = 5)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+```
+
+
+***
+
+<p dir="RTL">
+۷. آیا تلفن همراهی وجود دارد که در آب غرق نشود؟
+اگر جواب بله هست تمام گوشی های که این خاصیت را دارند بیابید.
+با کشیدن یک نمودار به این سوال پاسخ دهید.
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+<p dir="RTL">
+برای اینکه تلفن همراهی در آب غرق نشود باید چگالی آن کمتر از چگالش آب باشد.
+حال نمودار چگالی گوشی های مختلف را رسم میکنیم. خط واصل مشکی در این نمودار نشان دهندهی چگالی آب است
+</p>
+
+```{r}
+densitytstat <- mobile %>% 
+  mutate(volume = (dim_length * dim_breadth * dim_thickness) / 1000, 
+                                      density = weight / volume) %>% 
+  filter(!is.na(volume) & !is.na(density))
+
+ggplot(data = densitytstat) + 
+  geom_point(aes(x = device, y = density, color = density < 1), size = 1) + 
+  theme(axis.text.x = element_blank()) + 
+  geom_hline(yintercept = 1) +
+  guides(color = guide_legend(title = "Float on Water"))
+```
+
+***
+
+<p dir="RTL">
+۸. نمودار پراکنش حجم ذخیره سازی باطری و وزن را رسم نمایید.
+میزان همبستگی بین این دو کمیت را محاسبه کنید.
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+```{r}
+wbstat <- mobile %>% filter(!is.na(weight) & !is.na(battery_mah)) %>%
+  select(weight, battery_mah)
+
+ggplot(data = wbstat) + 
+  geom_point(aes(x = weight, y = battery_mah), size = 0.75)  + 
+  xlim(0, 1000) + 
+  labs(title = "Weight vs. Battery mAh")
+```
+
+```{r}
+cor(wbstat$weight, wbstat$battery_mah)
+```
+
+***
+
+<p dir="RTL">
+۹. قیمت پرچمداران یک برند خاص مثلا سامسونگ را بیابید و نمودار قیمت زمان و نام مدل را رسم نمایید.
+</p>
+
+<h2 dir="RTL"> 
+جواب:
+</h1>
+
+<p dir="RTL">
+برندی که برای این سوال انتخاب کردیم Apple است. ابتدا همه ی داده ها که companyشان Apple است را استخراج میکنیم, Apple Watch و iPad و ... را از آنها حذف میکنیم. 
+</p>
+```{r}
+maxstat <- mobile %>% 
+  filter(company == "Apple", str_detect(device, "iPhone")) %>%
+  group_by(year) %>% 
+  filter(price == max(price, na.rm = TRUE)) %>%
+  arrange(year)
+```
+
+```{r}
+ggplot(data = maxstat, aes(x = year, y = price)) + 
+  geom_bar(aes(fill = device), stat = "identity") + 
+  scale_x_continuous(breaks = seq(from = 2007, to = 2017)) + 
+  geom_label(aes(label = device, fill = device), 
+             size = 3.25, vjust = "center", hjust = "center") + 
+  theme(legend.position = "None")
+```
+
+***
+
+<p dir="RTL">
+۱۰. سه نمودار جالب رسم کنید و توضیح دهید چرا از نظر شما جالب است؟
+</p>
+
+<h2 dir="RTL"> 
+نمودار اول:
+</h1>
+
+<p dir="RTL">
+در این نمودار, تغییرات دوربین عقب و دوربین جلو(سلفی) را بررسی کرده ایم و میخواهیم ببینیم آیا جدیدا دوربین جلوی گوشی ها بهتر از دوربین عقب آنهاست یا خیر. 
+ابتدا با استفاده از `geom_point()` نمودار پراکنش این دو متغیر را رسم میکنم. 
+</p>
+
+```{r}
+mobile %>%
+  filter(!is.na(cam_px) & !is.na(sel_px) & !is.na(year)) %>% 
+  group_by(year) %>% 
+  summarise(SelfieAvg = mean(sel_px), FrontAvg = mean(cam_px)) -> FrontVsBack
+
+ggplot(FrontVsBack) +
+  geom_point(aes(year,SelfieAvg,color = "Front"), size = 5) +
+  geom_point(aes(year,FrontAvg, color = "Back"), size = 5) +
+  geom_line(aes(year,SelfieAvg,color = "Front"), size = 2) +
+  geom_line(aes(year,FrontAvg,color = "Back"), size = 2) +
+  scale_x_discrete(limit = FrontVsBack$year) +
+  ylab("Pixels") + xlab("Year") +
+  theme(legend.title = element_blank(), 
+        legend.justification=c(0,1), 
+        legend.position=c(0.05, 0.95),
+        legend.background = element_blank(),
+        legend.key = element_blank(), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +  
+  scale_color_brewer(palette = "Dark2")
+```
+<p dir="RTL">
+حال در یک نمودار دایره ای, تعداد گوشی های با دوربین جلوی قوی تر را بررسی میکنیم.  
+</p>
+
+```{r}
+cam_vs_sel_stat <- mobile %>% 
+  filter(!is.na(year) & !is.na(sel_px) & !is.na(cam_px))
+num <- nrow(cam_vs_sel_stat) 
+cam_vs_sel_stat <- cam_vs_sel_stat %>%
+  mutate(status = sel_px >= cam_px) %>%
+  group_by(status) %>%
+  summarise(count = n() / num * 100)
+cam_vs_sel_stat$count[1] = ceiling(cam_vs_sel_stat$count[1])
+cam_vs_sel_stat$count[2] = floor(cam_vs_sel_stat$count[2])
+
+
+cam_vs_sel_stat <- cam_vs_sel_stat %>% group_by(status) %>% mutate(pos = cumsum(count)- count/2 + 1)
+
+library(scales)
+ggplot(data=cam_vs_sel_stat, aes(x=factor(1), y=count, fill=factor(status))) +
+  geom_bar(stat="identity", color = "black") +
+  geom_text(aes(x = factor(1), y=pos, label = percent(count / 100)), size=6) +  # note y = pos
+  coord_polar(theta = "y") + 
+  theme_minimal() + 
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid=element_blank(),
+    legend.title = element_blank(),
+    axis.ticks = element_blank(),
+    plot.title=element_text(size=14, face="bold")
+    ) +
+  scale_fill_manual(labels = c("Back Camera Stronger", 
+                                "Front Camera Stronger"), 
+                     values = c("FALSE"="tomato", 
+                                "TRUE"="palegreen"))
+```
+
+<h2 dir="RTL"> 
+نمودار دوم:
+</h1>
+
+<p dir="RTL">
+در این نمودار قدرت cpu گوشی ها را با قدرت cpu کامپیوتر کنترل کننده ی سفینه ی Apollo 11 بررسی میکنیم. 
+ابتدا قدرت پردازنده را از ستون cpu داده ها استخراج میکنیم و در ستونی جدید قرار میدهیم.
+</p>
+
+```{r}
+ghz_cpu <- mobile %>% 
+  filter(str_detect(str_to_lower(cpu), "ghz")) %>%
+  mutate(cpudisc = str_extract(str_to_lower(cpu), "[0-9\\.]+[\\s]*ghz")) %>%
+  mutate(cpupower = 1000 * as.numeric(unlist(strsplit(unlist(cpudisc), "[^0-9\\.]+")))) %>%
+  arrange(cpupower)
+
+mhz_cpu <- mobile %>% 
+  filter(str_detect(str_to_lower(cpu), "mhz")) %>%
+  mutate(cpudisc = str_extract(str_to_lower(cpu), "[0-9\\.]+[\\s]*mhz")) %>%
+  mutate(cpupower = as.numeric(unlist(strsplit(unlist(cpudisc), "[^0-9\\.]+")))) %>%
+  arrange(cpupower)
+
+cpustat <- full_join(ghz_cpu, mhz_cpu) %>% filter(!is.na(year))
+```
+
+<p dir="RTL">
+حال ابتدا در نموداری قدرت cpu همه ی گوشی ها را رسم میکنیم. 
+خط آبی کمرنگ نشاندهنده ی قدرت cpu کامپیوتر Apollo 11 است.
+</p>
+
+```{r}
+ggplot(data = cpustat) + 
+  geom_count(aes(x = year, y = cpupower), color = "darkorchid4") + 
+  scale_x_discrete(limit = cpustat$year) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+        legend.title = element_text(size=12, hjust = "center", vjust = "center"), 
+        legend.justification=c(0,1), 
+        legend.position=c(0.05, 0.95),
+        legend.background = element_blank(),
+        legend.key = element_blank()) + 
+  guides(size=guide_legend(title="count")) + 
+  labs(title = "Comparing Apollo 11's CPU Power to Mobile Phones'", 
+       x = "Year", y = "CPU Power (MHz)") + 
+  geom_hline(yintercept = 2.048, show.legend = "T", color = "orange") + 
+  geom_text(aes(x = 2006, y = 35, label = "Apollo 11's CPU Power = 2.048"), size = 4, color = "orange2")
+```
+
+<p dir="RTL">
+حال میخواهیم نشان دهیم که قدرت پردازشی این کامپیوتر حتی از مینیمم قدرت پردازش گوشی ها نیز کمتر است. 
+</p>
+
+```{r}
+mincpustat <- cpustat %>% 
+  group_by(year) %>%
+  summarise(minimum = min(cpupower, na.rm = TRUE))
+
+ggplot(data = mincpustat) + 
+  geom_point(aes(x = year, y = minimum), color = "darkorchid4", size = 3) + 
+  scale_x_discrete(limit = mincpustat$year) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  labs(title = "Comparing Apollo 11's CPU Power to Mobile Phones'", 
+       x = "Year", y = "Minimum CPU Power (MHz)") + 
+  geom_hline(yintercept = 2.048, show.legend = "T", color = "orange") + 
+  geom_text(aes(x = year[3], y = 15, label = "Apollo 11's CPU Power = 2.048"), size = 4, color = "orange2")
+```
+
+<p dir="RTL">
+کمترین قدرت پردازشی را بدست می آوریم : 
+</p>
+
+```{r}
+min(cpustat$cpupower)
+```
+
+<p dir="RTL">
+همانطور که میبینیم این از قدرت پردازشی کامپیوتر کنترل کننده ی Apollo 11 (2.048 Mhz) بیشتر است. 
+</p>
+
+<h2 dir="RTL"> 
+نمودار سوم:
+</h1>
+
+<p dir="RTL">
+ابتدا از تبلت ها و واچ ها را از داده ها حذف میکنیم. سپس ۱۰ گوشی با کمترین حجم و ۱۰ گوشی با بیشترین حجم را بدست می آوریم. حال محاسبه میکنیم که اگر گوشی های کوچکتر حجم گوشی های بزرگتر را داشتند, چه وزنی پیدا میکردند. 
+ابتدا داده ها را آماده میکنیم :
+</p>
+
+```{r}
+volumestat <- mobile %>% 
+  filter(!is.na(dim_thickness) & !is.na(dim_length) & !is.na(dim_breadth) & !is.na(weight)) %>%
+  filter(dim_thickness > 0 & dim_length > 0 & dim_breadth > 0) %>%
+  filter(sim_no > 0) %>%
+  filter(!str_detect(str_to_lower(device), "watch") &
+           !str_detect(str_to_lower(device), "tab") & 
+           !str_detect(str_to_lower(device), "pad")) %>%
+  mutate(volume = (dim_thickness * dim_length * dim_breadth) / 1000) %>%
+  mutate(density = weight / volume)
+
+smallphones <- volumestat %>%
+  arrange(volume) %>%
+  slice(1:10) %>%
+  arrange(desc(volume))
+
+bigphones <- volumestat %>%
+  arrange(desc(volume)) %>%
+  slice(1:10)
+
+smallphones$bigsize = 0
+for(i in 1:10){
+  imaginarysize = bigphones$volume[i]
+  smallphones$bigsize[i] = smallphones$density[i] * imaginarysize
+}
+```
+
+<p dir="RTL">
+حال نمودار آن را رسم میکنیم :
+</p>
+
+
+```{r}
+ggplot() + 
+  geom_point(data = smallphones, aes(x = device, y = bigsize, color = "Small Phones Imaginary Weight"), size = 5) + 
+  geom_point(data = bigphones, aes(x = device, y = weight, color = "Big phones Actual Weight"), size = 5) + 
+  geom_line(data = smallphones, aes(group = 1, x = device, y = bigsize, color = "Small Phones Imaginary Weight"), size = 2) + 
+  geom_line(data = bigphones, aes(group = 1, x = device, y = weight, color = "Big phones Actual Weight"), size = 2) +
+  geom_label(data = smallphones, aes(x = device, y = bigsize, label = year), size = 3) + 
+  geom_label(data = bigphones, aes(x = device, y = weight, label = year), size = 3) +
+  theme(legend.title = element_blank(),  
+        legend.position="top", 
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank()) +
+  scale_color_brewer(palette = "Dark2") + 
+  labs(y = "Weight (gr)")
+```
+
+
+

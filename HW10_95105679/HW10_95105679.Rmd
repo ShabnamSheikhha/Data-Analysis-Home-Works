@@ -1,0 +1,1584 @@
+---
+title: "Tenth Week: Cluster Analysis"
+subtitle: "WDI Indicators"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    toc: true
+    number_sections: true
+---
+
+
+```{r setup, include = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 10,fig.height = 8,fig.align ="center", 
+                      fig.retina=1)
+```
+
+> I haven't included the code for some of the parts in order to keep this document as neat as I can.
+
+```{r , echo = F}
+setwd("/Users/deyapple/Documents/Courses/Term04/DA/Homework/hw_10")
+set.seed(19)
+library(readr)
+library(tidyverse)
+library(WDI)
+library(highcharter)
+library(zoo)
+library(ggbiplot)
+library(kableExtra)
+
+series <- read_csv("data/WDISeries.csv")
+countries <- read_csv("data/WDICountry.csv") 
+data <- read_csv("data/WDIData.csv") 
+```
+
+# Poorest Countries
+
+## Top 10 Poorest Countries
+
+> Indicator used : GDP per capita, PPP
+
+```{r, echo = F}
+poverty <- data %>% filter(`Indicator Code` == "NY.GDP.PCAP.PP.CD") %>% select(-`Country Code`, -`Indicator Code`, -`Indicator Name`) %>% 
+  gather(key = "year", value = "GDP", `1960`:`2017`) %>% 
+  select(country = `Country Name`, year, GDP) %>% drop_na()
+top10.poor <- poverty %>%
+  dplyr::group_by(country) %>%
+  dplyr::summarise(AVG.GDP = mean(GDP)) %>%
+  arrange(AVG.GDP) %>%
+  head(10)
+top10.poor %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+### Daily Income
+
+> Indicator used : Secondary income
+
+```{r, echo = F}
+
+income <- data %>% filter(`Indicator Code` == "BM.TRF.PRVT.CD") 
+income <- income %>% 
+  gather(key = "year", value = "BM.TRF.PRVT.CD", 5:(ncol(income) - 1)) %>% 
+  select(country = `Country Name`, year, BM.TRF.PRVT.CD) %>% drop_na()
+
+top10.poor.dailyincome <- income %>%
+  dplyr::group_by(country) %>%
+  dplyr::summarise(avg.daily.income = mean(BM.TRF.PRVT.CD, na.rm = T)) %>%
+  dplyr::ungroup() %>%
+  full_join(top10.poor, by = "country") %>% drop_na()
+
+library(viridisLite)
+top10.poor.dailyincome %>%
+  arrange(desc(avg.daily.income)) %>%
+  hchart(type = 'column', hcaes(x = country, y = avg.daily.income), borderColor = "black", name = "Daily Income", color = "#BC0000") %>%
+  hc_title(text = "The Daily Income of World's Top 10 Poorest Countries",
+           align = 'center', 
+           style = list(fontSize = "30px")) %>% 
+  hc_subtitle(text = 'From 1980 to 2017', align = 'center', 
+              style = list(fontSize = "20px", color = "white")) %>%
+  hc_xAxis(title = list(text = ""),
+           labels = list(style = list(fontSize = "15px")), lineColor = "black", lineWidth = 1, 
+           tickWidth = 1, tickColor = "black", tickLength = 25) %>%
+  hc_yAxis(title = list(text = ""),
+           lineWidth = 1, lineColor = "black", tickColor = "black", tickLength = 5) %>% 
+  hc_add_theme(hc_theme_elementary())
+```
+
+### Percentage Below Poverty Line
+
+> Indicator used : Poverty headcount ratio at national poverty lines
+
+```{r, echo = F}
+bline <- data %>% filter(`Indicator Code` == "SI.POV.NAHC") 
+bline <- bline %>% 
+  gather(key = "year", value = "SI.POV.NAHC", 5:(ncol(bline) - 1)) %>% 
+  select(country = `Country Name`, year, SI.POV.NAHC) %>% drop_na()
+
+top10.poor.belowline <- bline %>% 
+  drop_na() %>% 
+  dplyr::group_by(country) %>% 
+  dplyr::summarise(below.line.perc = mean(SI.POV.NAHC)) %>% 
+  left_join(top10.poor,.)
+top10.poor.belowline %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+
+### Life Expectancy
+
+> Indicator used : Life expectancy at birth
+
+```{r, echo = F}
+life.exp <- data %>% filter(`Indicator Code` == "SP.DYN.LE00.IN") 
+life.exp <- life.exp %>% 
+  gather(key = "year", value = "SP.DYN.LE00.IN", 5:(ncol(life.exp) - 1)) %>% 
+  select(country = `Country Name`, year, SP.DYN.LE00.IN) %>% drop_na()
+
+top10.poor.life.expectancy <- life.exp %>% 
+  drop_na() %>% 
+  dplyr::group_by(country) %>% 
+  dplyr::summarise(life.expectancy = mean(SP.DYN.LE00.IN)) %>% 
+  left_join(top10.poor,.)
+top10.poor.life.expectancy %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+# Rwanda Tragedy
+
+## Life Expectancy Boxplot
+
+We've downloaded this data in the previous section.
+
+```{r, echo = F}
+life.exp.world <- life.exp %>% drop_na() %>% arrange(year)
+life.exp.rwanda <- life.exp.world %>% dplyr::filter(country == "Rwanda")
+
+hcboxplot(x = life.exp.world$SP.DYN.LE00.IN,
+          var = life.exp.world$year,
+          outliers = F,
+          name = "Life Expectancy", color = 'gray') %>% 
+  hc_chart(type = "chart") %>%
+  hc_add_series(life.exp.rwanda, 
+                type = "spline", 
+                hcaes(y = SP.DYN.LE00.IN, x = year), 
+                name = "Rwanda Life Expectancy", color = "#BC0000") %>%
+  hc_title(text = "The Rwanda Tragedy",
+           align = 'center', 
+           style = list(fontSize = "30px")) %>% 
+  hc_subtitle(text = 'Visualization of History in A Chart', align = 'center', 
+              style = list(fontSize = "17px")) %>%
+  hc_xAxis(title = list(text = ""), 
+           labels = list(style = list(fontSize = "15px")), lineColor = "black", tickColor = "black") %>%
+  hc_yAxis(title = list(text = "Life Expectancy", style = list(fontSize="20px")),
+           lineWidth = 1, lineColor = "black", tickColor = "black") %>% 
+  hc_add_theme(hc_theme_elementary())
+```
+
+  As you can see, there is a drastic drop in the year 1993. This is a clear visual demonstration of the Rwanda tragedy. 
+  
+## Number of People Who Died
+
+
+
+ Out of a population of 7.3 million people, the official figures published by the Rwandan government estimated the number of victims of the genocide to be 1,070,014 in only 100 days. [Wikipedia](https://en.wikipedia.org/wiki/Rwandan_genocide)
+ 
+> Indicator used : Population, total
+
+As we can see the population has decreased significantly between the year 1992 and 1993. The data does not match the one from the wikipedia page exactly, but this might be due to the fact that the values in the dataset are midyear estimates.
+
+```{r, echo = F}
+population <- data %>% filter(`Indicator Code` == "SP.POP.TOTL", 
+                             `Country Name` == "Rwanda") %>% 
+  select(`Country Name`, `1992`:`1995`)
+population <- population %>% 
+  gather(key = "year", value = "SP.POP.TOTL", 2:5) %>% 
+  select(country = `Country Name`, year, SP.POP.TOTL) %>% drop_na()
+population %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+# Life Expectancy Vs. Health Expenditure
+
+> Indicator Used for Health Expenditure: Current health expenditure per capita
+
+```{r, echo = F}
+health.expenditure <- data %>% filter(`Indicator Code` == "SH.XPD.CHEX.PC.CD") 
+health.expenditure <- health.expenditure %>% 
+  gather(key = "year", value = "SH.XPD.CHEX.PC.CD", 5:(ncol(health.expenditure) - 1)) %>% 
+  select(country = `Country Name`, year, SH.XPD.CHEX.PC.CD) %>% drop_na()
+
+```
+
+> Indicator Used for Life Expectancy: Life expectancy at birth
+
+We've downloaded this data before.
+
+```{r, echo = F}
+life.expectancy <- life.exp %>% drop_na() %>% dplyr::filter(year >= 2000 & year <= 2016)
+```
+
+Before drawing any plots, it's logical to suspect that health expenditure has a positive effect on life expectancy.  
+To test whether this is true or not, first I've drawn the plot.
+
+```{r, echo = F}
+hl <- inner_join(life.expectancy, health.expenditure) %>% drop_na() %>%
+  dplyr::select(`Health Expenditure` = `SH.XPD.CHEX.PC.CD`, 
+         `Life Expectancy` = `SP.DYN.LE00.IN`, 
+         year)
+
+ggplot(hl, aes(x = `Health Expenditure`, y = `Life Expectancy`, color = year %>% as.numeric())) + 
+  geom_point() + 
+  geom_smooth(se = F, color = "#B90202") + 
+  theme_minimal() + 
+  theme(legend.position = "bottom") + 
+  scale_colour_gradient(low = "#CBCACA", high = "#5E5D5D") + 
+  labs(x = "Health Expenditure", y = "Life Expectancy") + 
+  guides(color = guide_legend(title="", 
+                             default.unit="inch"))
+```
+
+
+The plot seems to show a positive relationship between the two. I've also tested the correlation using `cor.test()`
+
+```{r}
+cor.test(hl$`Health Expenditure`, hl$`Life Expectancy`)
+```
+
+Since the $p-value$ is low, we can conclude that there is a positive correlation between health expenditure and life expectancy.
+
+
+# Iranian Households in The Past 50 Years
+
+> Indicator used: GDP per capita
+
+```{r, echo = F}
+iran.household.gdp <- data %>% filter(`Indicator Code` == "NY.GDP.PCAP.CD", 
+                                      `Country Name` %>% str_detect("Iran")) 
+iran.household.gdp <- iran.household.gdp %>% 
+  gather(key = "year", value = "NY.GDP.PCAP.CD", 5:(ncol(iran.household.gdp) - 1)) %>% 
+  select(country = `Country Name`, year, NY.GDP.PCAP.CD) %>% drop_na() %>%
+  filter(year >= 1968 & year <= 2017)
+
+```
+
+```{r, echo = F}
+iran.household.gdp %>%
+  arrange(year) %>%
+  hchart(type = 'line', hcaes(x = as.factor(year), y = NY.GDP.PCAP.CD), name = "GDP", 
+         borderColor = 'black', color = "#A20D0D") %>%
+  hc_title(text = "Iranian Household GDP",
+           align = 'center', 
+           style = list(fontSize = "30px")) %>% 
+  hc_subtitle(text = 'In The Last 50 Years', align = 'center', 
+              style = list(fontSize = "17px")) %>%
+  hc_xAxis(title = list(text = ""),
+           labels = list(style = list(fontSize = "15px")), lineColor = "black", tickColor = "black") %>%
+  hc_yAxis(title = list(text = "Household GDP", style = list(fontSize="20px")),
+           lineWidth = 1, lineColor = "black", tickColor = "black",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_elementary())
+
+```
+
+  As we can see, in general it's increasing.
+  
+# Economic Indicators
+
+First I have written a function that takes in these parameters:
+
+<ol>
+<li> A Source Data Frame containing columns named `indicator`, `year` and `country`. </li>
+<li> The Chart Title </li>
+<li> The Y Axis Name </li>
+<li> A Color Specifying Iran </li>
+</ol>
+and draws the desired plot.
+
+```{r, echo = F}
+
+draw.iran.vs.world.chart <- function(DATAFRAME, TITLE, YAXIS, IRANCOLOR){
+  world <- DATAFRAME %>% dplyr::filter(country != "Iran, Islamic Rep.")
+  iran <- DATAFRAME %>% dplyr::filter(country == "Iran, Islamic Rep.")
+  hcboxplot(x = world$indicator,
+            var = world$year,
+            outliers = F,
+            name = YAXIS, color = 'gray') %>% 
+    hc_chart(type = "chart") %>%
+    hc_add_series(iran, 
+                  type = "spline", 
+                  hcaes(x = year, y = indicator),
+                  name = paste(TITLE, "in Iran"), color = IRANCOLOR) %>%
+    hc_title(text = TITLE,
+             align = 'center', 
+             style = list(fontSize = "30px")) %>% 
+    hc_subtitle(text = "Iran Vs. The Rest of The World", align = 'center', 
+              style = list(fontSize = "20px")) %>%
+    hc_xAxis(title = list(text = ""), lineColor = "black", 
+             labels = list(style = list(fontSize = "15px"))) %>%
+    hc_yAxis(title = list(text = YAXIS, style = list(fontSize="20px")),
+             lineWidth = 1, lineColor = "black") %>% 
+    hc_add_theme(hc_theme_elementary())
+}
+```
+
+## Cleaning The Dataset
+
+Some of the countries in the dataset have titles such as **Low Income** or **Arab World**, etc. I looked at the `countries` dataset, and realized that tha `Region` column for these particular non-countries, was NA. So I've deleted those rows from the dataset.
+
+```{r}
+keep <- countries %>% filter(!is.na(Region)) %>% select(`Country Code`) %>% unlist() %>% unname()
+data <- data %>% filter(`Country Code` %in% keep)
+
+```
+
+
+## Choosing The Indicators
+
+Since many of the indicators didn't have as many as 20 years worth of data available for Iran, I have opted for those who had at least 16 between the years 1995 and 2015.
+
+
+```{r, echo = F}
+  #1
+  ## Exports of goods and services (% of GDP)
+  EXPGS <- data %>% filter(`Indicator Code` == "NE.EXP.GNFS.ZS") 
+EXPGS <- EXPGS %>% 
+  gather(key = "year", value = "NE.EXP.GNFS.ZS", 5:(ncol(EXPGS) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NE.EXP.GNFS.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2016 
+draw.iran.vs.world.chart(EXPGS, "Exports of goods and services (% of GDP)", 
+                         "(% of GDP)", 
+                         "#0CCEF5")
+EXPGS <- EXPGS %>% plyr::rename(c("indicator" = "Exports of goods and services"))
+all.econ <- EXPGS
+
+#2
+## Imports of goods and services (% of GDP)
+IMPGS <- data %>% filter(`Indicator Code` == "NE.IMP.GNFS.ZS") 
+IMPGS <- IMPGS %>% 
+  gather(key = "year", value = "NE.IMP.GNFS.ZS", 5:(ncol(IMPGS) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NE.IMP.GNFS.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+# STATUS: 1995 - 2016 
+draw.iran.vs.world.chart(IMPGS,
+                         "Imports of goods and services (% of GDP)", 
+                         "(% of GDP)", 
+                         "#0CF5B7")
+IMPGS <- IMPGS %>% plyr::rename(c("indicator" = "Imports of goods and services"))
+all.econ <- full_join(all.econ, IMPGS)
+
+#3
+## Adjusted savings: education expenditure (% of GNI)
+ASAV <- data %>% filter(`Indicator Code` == "NY.ADJ.AEDU.GN.ZS") 
+ASAV <- ASAV %>% 
+  gather(key = "year", value = "NY.ADJ.AEDU.GN.ZS", 5:(ncol(ASAV) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NY.ADJ.AEDU.GN.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(ASAV,"Adjusted savings: education expenditure (% of GNI)", 
+                         "(% of GNI)", 
+                         "#D6F50C")
+ASAV <- ASAV %>% plyr::rename(c("indicator" = "Adjusted savings: education expenditure"))
+all.econ <- full_join(all.econ, ASAV)
+
+#4
+## Inflation, consumer prices (annual %)
+INF <- data %>% filter(`Indicator Code` == "FP.CPI.TOTL.ZG") 
+INF <- INF %>% 
+  gather(key = "year", value = "FP.CPI.TOTL.ZG", 5:(ncol(INF) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = FP.CPI.TOTL.ZG) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(INF, "Inflation, consumer prices (annual %)", 
+                         "(annual %)", 
+                         "#F5A70C")
+INF <- INF %>% plyr::rename(c("indicator" = "Inflation, consumer prices"))
+all.econ <- full_join(all.econ , INF)
+
+
+#5
+## GDP per capita (current US$)
+GDPPC <- data %>% filter(`Indicator Code` == "NY.GDP.PCAP.CD") 
+GDPPC <- GDPPC %>% 
+  gather(key = "year", value = "NY.GDP.PCAP.CD", 5:(ncol(GDPPC) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NY.GDP.PCAP.CD) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(GDPPC, "GDP per capita (current US$)", 
+                         "(current US$)", 
+                         "#F58F8F")
+GDPPC <- GDPPC %>% plyr::rename(c("indicator" = "GDP per capita"))
+all.econ <- full_join(all.econ, GDPPC)
+
+#6
+## Gross capital formation (% of GDP)
+GCF <- data %>% filter(`Indicator Code` == "NE.GDI.TOTL.ZS") 
+GCF <- GCF %>% 
+  gather(key = "year", value = "NE.GDI.TOTL.ZS", 5:(ncol(GCF) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NE.GDI.TOTL.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(GCF, "Gross capital formation (% of GDP)", 
+                         "(% of GDP)", 
+                         "#E08FF5")
+GCF <- GCF %>% plyr::rename(c("indicator" = "Gross capital formation"))
+all.econ <- full_join(all.econ, GCF)
+
+
+#7
+## Agriculture Value added (% of GDP)
+AVA <- data %>% filter(`Indicator Code` == "NV.AGR.TOTL.ZS") 
+AVA <- AVA %>% 
+  gather(key = "year", value = "NV.AGR.TOTL.ZS", 5:(ncol(AVA) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NV.AGR.TOTL.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(AVA, "Agriculture Value added (% of GDP)", 
+                         "(% of GDP)", 
+                         "#A68FF5")
+AVA <- AVA %>% plyr::rename(c("indicator" = "Agriculture Value added"))
+all.econ <- full_join(all.econ, AVA)
+
+#8
+## Access to electricity (% of population)
+ELEC <- data %>% filter(`Indicator Code` == "EG.ELC.ACCS.ZS") 
+ELEC <- ELEC %>% 
+  gather(key = "year", value = "EG.ELC.ACCS.ZS", 5:(ncol(ELEC) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = EG.ELC.ACCS.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(ELEC, "Access to electricity (% of population)", 
+                         "(% of population)", 
+                         "#8FADF5")
+ELEC <- ELEC %>% plyr::rename(c("indicator" = "Access to electricity"))
+all.econ <- full_join(all.econ, ELEC)
+
+
+#9
+## Trade (% of GDP)
+Trade <- data %>% filter(`Indicator Code` == "NE.TRD.GNFS.ZS") 
+Trade <- Trade %>% 
+  gather(key = "year", value = "NE.TRD.GNFS.ZS", 5:(ncol(Trade) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NE.TRD.GNFS.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(Trade,"Trade (% of GDP)", 
+                         "(% of GDP)", 
+                         "#D6F50C")
+Trade <- Trade %>% plyr::rename(c("indicator" = "Trade"))
+all.econ <- full_join(all.econ, Trade)
+
+
+#10
+## Gross domestic savings (% of GDP)
+GDS <- data %>% filter(`Indicator Code` == "NY.GDS.TOTL.ZS") 
+GDS <- GDS %>% 
+  gather(key = "year", value = "NY.GDS.TOTL.ZS", 5:(ncol(GDS) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NY.GDS.TOTL.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2015
+draw.iran.vs.world.chart(GDS, "Gross domestic savings (% of GDP)", "(% of GDP)", 
+                         "#8FF5BE")
+GDS <- GDS %>% plyr::rename(c("indicator" = "Gross domestic savings"))
+all.econ <- full_join(all.econ, GDS)
+
+#11
+## Unemployment, total (% of total labor force) (modeled ILO estimate)
+UNEMPT <- data %>% filter(`Indicator Code` == "SL.UEM.TOTL.ZS") 
+UNEMPT <- UNEMPT %>% 
+  gather(key = "year", value = "SL.UEM.TOTL.ZS", 5:(ncol(UNEMPT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SL.UEM.TOTL.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2015
+draw.iran.vs.world.chart(UNEMPT, "Unemployment, total (% of total labor force) (modeled ILO estimate)", "(% of total labor force)", "#8DD5BE")
+UNEMPT <- UNEMPT %>% plyr::rename(c("indicator" = "Unemployment, total"))
+all.econ <- full_join(all.econ, UNEMPT)
+
+
+#12
+## Manufacturing, value added (current US$)
+MVA <- data %>% filter(`Indicator Code` == "NV.IND.MANF.CD") 
+MVA <- MVA %>% 
+  gather(key = "year", value = "NV.IND.MANF.CD", 5:(ncol(MVA) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NV.IND.MANF.CD) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2014
+draw.iran.vs.world.chart(MVA, "Manufacturing, value added (current US$)",  "", "#F5D98F")
+
+MVA <- MVA %>% plyr::rename(c("indicator" = "Manufacturing, value added"))
+all.econ <- full_join(all.econ, MVA)
+
+#13 
+## Energy imports, net (% of energy use)
+ENIMP <- data %>% filter(`Indicator Code` == "EG.IMP.CONS.ZS") 
+ENIMP <- ENIMP %>% 
+  gather(key = "year", value = "EG.IMP.CONS.ZS", 5:(ncol(ENIMP) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = EG.IMP.CONS.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015) 
+# STATUS: 1995 - 2014
+draw.iran.vs.world.chart(ENIMP, "Energy imports, net (% of energy use)", 
+                         "(% of energy use)", 
+                         "#F58F8F")
+ENIMP <- ENIMP %>% plyr::rename(c("indicator" = "Energy imports, net"))
+all.econ <- full_join(all.econ, ENIMP)
+
+
+#14 
+## Broad money (% of GDP)
+BRM <- data %>% filter(`Indicator Code` == "FM.LBL.BMNY.GD.ZS") 
+BRM <- BRM %>% 
+  gather(key = "year", value = "FM.LBL.BMNY.GD.ZS", 5:(ncol(BRM) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = FM.LBL.BMNY.GD.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+# STATUS: 1995 - 2016
+draw.iran.vs.world.chart(BRM,
+                         "Broad money (% of GDP)", 
+                         "(% of GDP)", 
+                         "#F58F8F")
+BRM <- BRM %>% plyr::rename(c("indicator" = "Broad money"))
+all.econ <- full_join(all.econ, BRM)
+
+#15
+## Foreign direct investment, net inflows (BoP, current US$)
+FDI <- data %>% filter(`Indicator Code` == "BX.KLT.DINV.CD.WD") 
+FDI <- FDI %>% 
+  gather(key = "year", value = "BX.KLT.DINV.CD.WD", 5:(ncol(FDI) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = BX.KLT.DINV.CD.WD) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+## STATUS: 1995 - 2016
+draw.iran.vs.world.chart(FDI, "Foreign direct investment, net inflows (BoP, current US$)", 
+                         "(BoP, current US$)", 
+                         "#D5D4F9")
+FDI <- FDI %>% plyr::rename(c("indicator" = "Foreign direct investment"))
+all.econ <- full_join(all.econ, FDI)
+
+
+#16
+## Industry, value added (current US$)
+IVA <- data %>% filter(`Indicator Code` == "NV.IND.TOTL.CD") 
+IVA <- IVA %>% 
+  gather(key = "year", value = "NV.IND.TOTL.CD", 5:(ncol(IVA) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NV.IND.TOTL.CD) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+draw.iran.vs.world.chart(IVA, 
+                         "Industry, value added (current US$)", 
+                         "(current US$)", 
+                         "#D4F9E4")
+IVA <- IVA %>% plyr::rename(c("indicator" = "Industry, value added"))
+all.econ <- full_join(all.econ, IVA)
+
+#17
+## Military expenditure (% of GDP)
+MIL <- data %>% filter(`Indicator Code` == "MS.MIL.XPND.GD.ZS") 
+MIL <- MIL %>% 
+  gather(key = "year", value = "MS.MIL.XPND.GD.ZS", 5:(ncol(MIL) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = MS.MIL.XPND.GD.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+draw.iran.vs.world.chart(MIL, 
+                         "Military expenditure (% of GDP)", 
+                         "(% of GDP)", 
+                         "#F3A8A8")
+MIL <- MIL %>% plyr::rename(c("indicator" = "Military expenditure"))
+all.econ <- full_join(all.econ, MIL)
+
+#18
+## GNI per capita, Atlas method (current US$)
+GNI <- data %>% filter(`Indicator Code` == "NY.GNP.PCAP.CD") 
+GNI <- GNI %>% 
+  gather(key = "year", value = "NY.GNP.PCAP.CD", 5:(ncol(GNI) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NY.GNP.PCAP.CD) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+draw.iran.vs.world.chart(GNI,
+                         "GNI per capita, Atlas method (current US$)", 
+                         "(current US$)", 
+                         "#F3A8A8")
+GNI <- GNI %>% plyr::rename(c("indicator" = "GNI per capita, Atlas method"))
+all.econ <- full_join(all.econ, GNI)
+
+
+#19
+## Personal remittances, received (current US$)
+REMIT <- data %>% filter(`Indicator Code` == "BX.TRF.PWKR.CD.DT") 
+REMIT <- REMIT %>% 
+  gather(key = "year", value = "BX.TRF.PWKR.CD.DT", 5:(ncol(REMIT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = BX.TRF.PWKR.CD.DT) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+draw.iran.vs.world.chart(REMIT, 
+                         "Personal remittances, received (current US$)", 
+                         "(current US$)", 
+                         "#F3A8A8")
+REMIT <- REMIT %>% plyr::rename(c("indicator" = "Personal remittances, received"))
+all.econ <- full_join(all.econ, REMIT)
+
+#20
+## Services, etc., value added (% of GDP)
+SERV <- data %>% filter(`Indicator Code` == "NV.SRV.TETC.ZS") 
+SERV <- SERV %>% 
+  gather(key = "year", value = "NV.SRV.TETC.ZS", 5:(ncol(SERV) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NV.SRV.TETC.ZS) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+draw.iran.vs.world.chart(SERV, 
+                         "Services, etc., value added (% of GDP)",  
+                         "(% of GDP)", 
+                         "#F3A8A8")
+SERV <- SERV %>% plyr::rename(c("indicator" = "Services, etc., value added"))
+all.econ <- full_join(all.econ, SERV)
+
+
+```
+
+# Clustering Based on Economic Data
+
+## Removing NAs
+
+After moving all NAs I was left with 140 countries, which is kind of enough.
+
+```{r}
+all.econ.clusters <- all.econ %>% drop_na()
+```
+
+## Cluster Analysis by K-means
+
+```{r}
+all.econ.clusters <- all.econ.clusters %>% 
+  dplyr::select(-year) %>% 
+  dplyr::group_by(country) %>% 
+  dplyr::summarise_all(funs(mean))
+```
+
+
+```{r}
+kcl.econ <- kmeans(all.econ.clusters %>% dplyr::select(-country), centers = 3)
+all.econ.clusters$cluster <- kcl.econ$cluster
+kcl.econ
+```
+
+## Iran's cluster
+
+```{r}
+iran.econ.cluster <- all.econ.clusters %>% dplyr::filter(country %>% str_detect("Iran"))
+all.econ.clusters %>% dplyr::select(country, cluster) %>% dplyr::filter(cluster == iran.econ.cluster$cluster) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+# Evaluating The Cluster Using PCA Biplot
+
+```{r}
+econ.cluster.pca = prcomp(all.econ.clusters %>% dplyr::select(-country, -cluster), center = T, scale. = T)
+biplot <- ggbiplot(econ.cluster.pca,
+         groups = as.factor(kcl.econ$cluster), ellipse = T) + 
+  theme_minimal()
+biplot
+```
+
+After drawing the biplot we see that the groups are more or less distinct. Also the countries in each cluster seem to make sense. Most first world countries ended up in the same group, and most third world countries ended up in a different group from them.   
+# Predicting Economic Growth
+
+> Indicator used: GDP growth
+
+```{r}
+growth <- data %>% filter(`Indicator Code` == "NY.GDP.MKTP.KD.ZG") 
+growth <- growth %>% 
+  gather(key = "year", value = "NY.GDP.MKTP.KD.ZG", 5:(ncol(growth) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = NY.GDP.MKTP.KD.ZG) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+growth <- growth %>% plyr::rename(c("indicator" = "GDP growth"))
+
+all.econ.growth <- all.econ %>% full_join(growth)
+all.econ.growth <- all.econ.growth %>% dplyr::select(-country) %>% sapply(as.numeric) %>% na.aggregate() %>% as.data.frame()
+all.econ.growth$country <- all.econ$country
+iran.econ.growth <- all.econ.growth %>% dplyr::filter(country %>% str_detect("Iran"))
+```
+
+```{r}
+library(h2o)
+h2o.init()
+hiran = as.h2o(iran.econ.growth %>% dplyr::select(-year, -country, `GDP growth`))
+iglm <- h2o.glm(training_frame = hiran, 
+        y = "GDP growth", 
+        x = iran.econ.growth %>% dplyr::select(-year, -country, -`GDP growth`) %>% colnames(), 
+        family = "gaussian")
+iglm
+```
+
+# Health and Education Indicators
+
+## Health
+
+### Q5
+
+```{r, echo = F}
+#1
+## Birth rate, crude (per 1,000 people)
+BRC <- data %>% filter(`Indicator Code` == "SP.DYN.CBRT.IN") 
+BRC <- BRC %>% 
+  gather(key = "year", value = "SP.DYN.CBRT.IN", 5:(ncol(BRC) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.CBRT.IN) %>% drop_na() %>%
+  filter(year >= 1995 & year <= 2015)
+
+#draw.iran.vs.world.chart(BRC, 
+ #                        "Birth rate, crude (per 1,000 people)", 
+  #                       "(per 1,000 people)", 
+   #                      "#F3A8A8")
+
+BRC <- BRC %>% plyr::rename(c("indicator" = "Birth rate, crude"))
+all.health <- BRC
+
+#2 ✅
+## Death rate, crude (per 1,000 people)
+DRC <- data %>% filter(`Indicator Code` == "SP.DYN.CDRT.IN") 
+DRC <- DRC %>% 
+  gather(key = "year", value = "SP.DYN.CDRT.IN", 5:(ncol(DRC) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.CDRT.IN) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(DRC, 
+                         "Death rate, crude (per 1,000 people)", 
+                         "(per 1,000 people)", 
+                         "#F3A8A8")
+DRC <- DRC %>% plyr::rename(c("indicator" = "Death rate, crude"))
+all.health <- full_join(all.health, DRC)
+
+
+#3
+## Fertility rate, total (births per woman) ✅
+FRT <- data %>% filter(`Indicator Code` == "SP.DYN.TFRT.IN") 
+FRT <- FRT %>% 
+  gather(key = "year", value = "SP.DYN.TFRT.IN", 5:(ncol(FRT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.TFRT.IN) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(FRT, 
+                         "Fertility rate, total (births per woman)", 
+                         "(births per woman)", 
+                         "#F3A8A8")
+FRT <- FRT %>% plyr::rename(c("indicator" = "Fertility rate, total"))
+all.health <- full_join(all.health, FRT)
+
+#4
+## Immunization, DPT (% of children ages 12-23 months) 
+DPT <- data %>% filter(`Indicator Code` == "SH.IMM.IDPT") 
+DPT <- DPT %>% 
+  gather(key = "year", value = "SH.IMM.IDPT", 5:(ncol(DPT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.IMM.IDPT) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(DPT, 
+                         "Immunization, DPT (% of children ages 12-23 months)", 
+                         "(% of children ages 12-23 months)", 
+                         "#F3A8A8")
+DPT <- DPT %>% plyr::rename(c("indicator" = "Immunization, DPT"))
+all.health <- full_join(all.health, DPT)
+
+#5
+## Survival to age 65, male (% of cohort)
+STAM <- data %>% filter(`Indicator Code` == "SP.DYN.TO65.MA.ZS") 
+STAM <- STAM %>% 
+  gather(key = "year", value = "SP.DYN.TO65.MA.ZS", 5:(ncol(STAM) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.TO65.MA.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(STAM,
+                         "Survival to age 65, male (% of cohort)", 
+                         "(% of cohort)", 
+                         "#F3A8A8")
+STAM <- STAM %>% plyr::rename(c("indicator" = "Survival to age 65, male"))
+all.health <- full_join(all.health, STAM)
+
+
+#6 ✅
+## Life expectancy at birth, total (years)
+LEXP <- data %>% filter(`Indicator Code` == "SP.DYN.LE00.IN") 
+LEXP <- LEXP %>% 
+  gather(key = "year", value = "SP.DYN.LE00.IN", 5:(ncol(LEXP) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.LE00.IN) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(LEXP, 
+                         "Life expectancy at birth, total (years)", 
+                         "(years)", 
+                         "#F3A8A8")
+LEXP <- LEXP %>% plyr::rename(c("indicator" = "Life expectancy at birth, total"))
+all.health <- full_join(all.health, LEXP)
+
+
+#7
+## Population growth (annual %)
+POPG <- data %>% filter(`Indicator Code` == "SP.POP.GROW") 
+POPG <- POPG %>% 
+  gather(key = "year", value = "SP.POP.GROW", 5:(ncol(POPG) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.POP.GROW) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(POPG, 
+                         "Population growth (annual %)", 
+                         "(annual %)", 
+                         "#F3A8A8")
+POPG <- POPG %>% plyr::rename(c("indicator" = "Population growth"))
+all.health <- full_join(all.health, POPG)
+
+#8 ✅
+## Prevalence of anemia among children (% of children under 5)
+AMN <- data %>% filter(`Indicator Code` == "SH.ANM.CHLD.ZS") 
+AMN <- AMN %>% 
+  gather(key = "year", value = "SH.ANM.CHLD.ZS", 5:(ncol(AMN) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.ANM.CHLD.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(AMN, 
+                         "Prevalence of anemia among children (% of children under 5)",
+                         "(% of children under 5)", 
+                         "#F3A8A8")
+AMN <- AMN %>% plyr::rename(c("indicator" = "Prevalence of anemia among children"))
+all.health <- full_join(all.health, AMN)
+
+
+#9 ✅
+## Survival to age 65, female (% of cohort)
+STA <- data %>% filter(`Indicator Code` == "SP.DYN.TO65.FE.ZS") 
+STA <- STA %>% 
+  gather(key = "year", value = "SP.DYN.TO65.FE.ZS", 5:(ncol(STA) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.TO65.FE.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(STA,
+                         "Survival to age 65, female (% of cohort)", 
+                         "(% of cohort)", 
+                         "#F3A8A8")
+STA <- STA %>% plyr::rename(c("indicator" = "Survival to age 65, female"))
+all.health <- full_join(all.health, STA)
+
+
+#10 ✅
+## Age dependency ratio (% of working-age population)
+ADR <- data %>% filter(`Indicator Code` == "SP.POP.DPND") 
+ADR <- ADR %>% 
+  gather(key = "year", value = "SP.POP.DPND", 5:(ncol(ADR) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.POP.DPND) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(ADR,
+                         "Age dependency ratio (% of working-age population)", 
+                         "(% of working-age population)", 
+                         "#F3A8A8")
+ADR <- ADR %>% plyr::rename(c("indicator" = "Age dependency ratio"))
+all.health <- full_join(all.health, ADR)
+
+#11 ✅
+## Mortality rate, under-5 (per 1,000 live births)
+MORT <- data %>% filter(`Indicator Code` == "SH.DYN.MORT") 
+MORT <- MORT %>% 
+  gather(key = "year", value = "SH.DYN.MORT", 5:(ncol(MORT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.DYN.MORT) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(MORT, 
+                         "Mortality rate, under-5 (per 1,000 live births)", 
+                         "(per 1,000 live births)", 
+                         "#F3A8A8")
+MORT <- MORT %>% plyr::rename(c("indicator" = "Mortality rate, under-5"))
+all.health <- full_join(all.health, MORT)
+
+#12  ✅
+## Maternal mortality ratio (modeled estimate, per 100,000 live births)
+MMORT <- data %>% filter(`Indicator Code` == "SH.STA.MMRT") 
+MMORT <- MMORT %>% 
+  gather(key = "year", value = "SH.STA.MMRT", 5:(ncol(MMORT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.STA.MMRT) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(MMORT,
+                         "Maternal mortality ratio (modeled estimate, per 100,000 live births)", "(modeled estimate, per 100,000 live births)", 
+                         "#F3A8A8")
+MMORT <- MMORT %>% plyr::rename(c("indicator" = "Maternal mortality ratio"))
+all.health <- full_join(all.health, MMORT)
+
+
+
+#13
+## ARI treatment (% of children under 5 taken to a health provider)
+MRN <- data %>% filter(`Indicator Code` == "SH.DYN.NMRT") 
+MRN <- MRN %>% 
+  gather(key = "year", value = "SH.DYN.NMRT", 5:(ncol(MRN) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.DYN.NMRT) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+#]draw.iran.vs.world.chart(MRN, 
+ #                        "Mortality rate, neonatal (per 1,000 live births)", 
+  #                       "(per 1,000 live births)", 
+   #                      "#F3A8A8")
+MRN <- MRN %>% plyr::rename(c("indicator" = "Mortality rate, neonatal"))
+all.health <- full_join(all.health, MRN)
+
+
+#14
+## Immunization, measles (% of children ages 12-23 months)
+IMMUN <- data %>% filter(`Indicator Code` == "SH.IMM.MEAS") 
+IMMUN <- IMMUN %>% 
+  gather(key = "year", value = "SH.IMM.MEAS", 5:(ncol(IMMUN) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.IMM.MEAS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(IMMUN, 
+                         "Immunization, measles (% of children ages 12-23 months)", 
+                         "(% of children ages 12-23 months)", 
+                         "#F3A8A8")
+IMMUN <- IMMUN %>% plyr::rename(c("indicator" = "Immunization, measles"))
+all.health <- full_join(all.health, IMMUN)
+
+
+
+#15
+## Lifetime risk of maternal death (%)
+LRM <- data %>% filter(`Indicator Code` == "SH.MMR.RISK.ZS") 
+LRM <- LRM %>% 
+  gather(key = "year", value = "SH.MMR.RISK.ZS", 5:(ncol(LRM) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.MMR.RISK.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(LRM,
+                         "Lifetime risk of maternal death (%)", 
+                         "(%)", 
+                         "#F3A8A8")
+LRM <- LRM %>% plyr::rename(c("indicator" = "Lifetime risk of maternal death"))
+all.health <- full_join(all.health, LRM)
+
+
+#16 ✅
+## Mortality rate, adult, female (per 1,000 female adults)
+MRAF <- data %>% filter(`Indicator Code` == "SP.DYN.AMRT.FE") 
+MRAF <- MRAF %>% 
+  gather(key = "year", value = "SP.DYN.AMRT.FE", 5:(ncol(MRAF) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.AMRT.FE) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(MRAF, 
+                         "Mortality rate, adult, female (per 1,000 female adults)", "(per 1,000 female adults)", "#F3A8A8")
+MRAF <- MRAF %>% plyr::rename(c("indicator" = "Mortality rate, adult, female"))
+all.health <- full_join(all.health, MRAF)
+
+
+
+#17  ✅
+## Mortality rate, adult, male (per 1,000 male adults)
+MRAM <- data %>% filter(`Indicator Code` == "SP.DYN.AMRT.MA") 
+MRAM <- MRAM %>% 
+  gather(key = "year", value = "SP.DYN.AMRT.MA", 5:(ncol(MRAM) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.AMRT.MA) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(MRAM, 
+                         "Mortality rate, adult, male (per 1,000 male adults)", "(per 1,000 male adults)", 
+                         "#F3A8A8")
+MRAM <- MRAM %>% plyr::rename(c("indicator" = "Mortality rate, adult, male"))
+all.health <- full_join(all.health, MRAM)
+
+
+
+#18 ✅
+## Mortality rate, infant (per 1,000 live births)
+MRI <- data %>% filter(`Indicator Code` == "SP.DYN.IMRT.IN") 
+MRI <- MRI %>% 
+  gather(key = "year", value = "SP.DYN.IMRT.IN", 5:(ncol(MRI) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SP.DYN.IMRT.IN) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(MRI, 
+                         "Mortality rate, infant (per 1,000 live births)", 
+                         "(per 1,000 live births)", 
+                         "#F3A8A8")
+MRI <- MRI %>% plyr::rename(c("indicator" = "Mortality rate, infant"))
+all.health <- full_join(all.health, MRI)
+
+#19
+## Immunization, HepB3 (% of one-year-old children)
+HEPB <- data %>% filter(`Indicator Code` == "SH.IMM.HEPB") 
+HEPB <- HEPB %>% 
+  gather(key = "year", value = "SH.IMM.HEPB", 5:(ncol(HEPB) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SH.IMM.HEPB) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(HEPB,
+                         "Immunization, HepB3 (% of one-year-old children)", 
+                         "(% of one-year-old children)", 
+                         "#F3A8A8")
+HEPB <- HEPB %>% plyr::rename(c("indicator" = "Immunization, HepB3"))
+all.health <- full_join(all.health, HEPB)
+
+#20
+## Depth of the food deficit (kilocalories per person per day)
+DFD <- data %>% filter(`Indicator Code` == "SN.ITK.DFCT") 
+DFD <- DFD %>% 
+  gather(key = "year", value = "SN.ITK.DFCT", 5:(ncol(DFD) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SN.ITK.DFCT) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(DFD, 
+                         "Depth of the food deficit (kilocalories per person per day)", 
+                         "(kilocalories per person per day)", 
+                         "#F3A8A8")
+DFD <- DFD %>% plyr::rename(c("indicator" = "Depth of the food deficit"))
+all.health <- full_join(all.health, DFD)
+```
+
+### Health Cluster Analysis Using K-Means
+
+
+#### Replacing NAs
+
+This time too, I have replaces NAs with the mean. 
+
+```{r}
+all.health.clusters <- all.health %>% dplyr::select(-country) %>% sapply(as.numeric) %>% na.aggregate() %>% as.data.frame()
+all.health.clusters$country <- all.health$country
+
+all.health.clusters <- all.health.clusters %>% 
+  dplyr::select(-year) %>% 
+  dplyr::group_by(country) %>% 
+  dplyr::summarise_all(funs(mean))
+```
+
+#### Cluster Analysis by K-means
+
+```{r}
+kcl.health <- kmeans(all.health.clusters %>% dplyr::select(-country), centers = 3)
+kcl.health
+all.health.clusters$cluster <- kcl.health$cluster
+```
+
+
+#### Iran's cluster
+```{r}
+iran.health.cluster <- all.health.clusters %>% dplyr::filter(country %>% str_detect("Iran"))
+all.health.clusters %>% dplyr::select(country, cluster) %>% dplyr::filter(cluster == iran.health.cluster$cluster) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+### Q7
+
+```{r}
+health.cluster.pca = prcomp(all.health.clusters %>% dplyr::select(-country), center = T, scale. = T)
+ggbiplot(health.cluster.pca,
+         groups = as.factor(kcl.health$cluster), ellipse = T) + 
+  theme_minimal()
+```
+
+## Education
+
+### Q5
+
+```{r, echo = F}
+
+#2
+## School enrollment, primary (% gross)
+SENRP <- data %>% filter(`Indicator Code` == "SE.PRM.ENRR") 
+SENRP <- SENRP %>% 
+  gather(key = "year", value = "SE.PRM.ENRR", 5:(ncol(SENRP) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.PRM.ENRR) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(SENRP, 
+                         "School enrollment, primary (% gross)", 
+                         "(% gross)", 
+                         "#F3A8A8")
+SENRP <- SENRP %>% plyr::rename(c("indicator" = "School enrollment, primary"))
+all.edu <- SENRP
+
+#3
+## School enrollment, secondary (% gross)
+SENRS <- data %>% filter(`Indicator Code` == "SE.SEC.ENRR") 
+SENRS <- SENRS %>% 
+  gather(key = "year", value = "SE.SEC.ENRR", 5:(ncol(SENRS) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.SEC.ENRR) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(SENRS, 
+                         "School enrollment, secondary (% gross)", 
+                         "(% gross)", 
+                         "#F3A8A8")
+SENRS <- SENRS %>% plyr::rename(c("indicator" = "School enrollment, secondary"))
+all.edu <- full_join(all.edu, SENRS)
+
+#5
+## Primary completion rate, total (% of relevant age group) ❌
+PRCOMPL <- data %>% filter(`Indicator Code` == "SE.PRM.CMPT.ZS") 
+PRCOMPL <- PRCOMPL %>% 
+  gather(key = "year", value = "SE.PRM.CMPT.ZS", 5:(ncol(PRCOMPL) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.PRM.CMPT.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(PRCOMPL, 
+                         "Primary completion rate, total (% of relevant age group)", 
+                         "(% of relevant age group)", 
+                         "#F3A8A8")
+PRCOMPL <- PRCOMPL %>% plyr::rename(c("indicator" = "Primary completion rate, total"))
+all.edu <- full_join(all.edu, PRCOMPL)
+
+#6
+## Government expenditure on education, total (% of GDP)
+XPDEDU <- data %>% filter(`Indicator Code` == "SE.XPD.TOTL.GD.ZS") 
+XPDEDU <- XPDEDU %>% 
+  gather(key = "year", value = "SE.XPD.TOTL.GD.ZS", 5:(ncol(XPDEDU) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.XPD.TOTL.GD.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(XPDEDU, 
+                         "Government expenditure on education, total (% of GDP)", 
+                         "(% of GDP)", 
+                         "#F3A8A8")
+XPDEDU <- XPDEDU %>% plyr::rename(c("indicator" = "Government expenditure on education, total"))
+all.edu <- full_join(all.edu, XPDEDU)
+
+#7
+## Government expenditure per student, tertiary (% of GDP per capita)
+XPDTERTST <- data %>% filter(`Indicator Code` == "SE.XPD.TOTL.GD.ZS") 
+XPDTERTST <- XPDTERTST %>% 
+  gather(key = "year", value = "SE.XPD.TOTL.GD.ZS", 5:(ncol(XPDTERTST) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.XPD.TOTL.GD.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(XPDTERTST, 
+                         "Government expenditure per student, tertiary (% of GDP per capita)", 
+                         "(% of GDP per capita)", 
+                         "#F3A8A8")
+XPDTERTST <- XPDTERTST %>% plyr::rename(c("indicator" = "Government expenditure per student, tertiary"))
+all.edu <- full_join(all.edu, XPDTERTST)
+
+#8
+## Government expenditure per student, secondary (% of GDP per capita) ❌
+XPDSECOST <- data %>% filter(`Indicator Code` == "SE.XPD.SECO.PC.ZS") 
+XPDSECOST <- XPDSECOST %>% 
+  gather(key = "year", value = "SE.XPD.SECO.PC.ZS", 5:(ncol(XPDSECOST) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.XPD.SECO.PC.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(XPDSECOST, 
+                         "Government expenditure per student, secondary (% of GDP per capita)", 
+                         "(% of GDP per capita)", 
+                         "#F3A8A8")
+XPDSECOST <- XPDSECOST %>% plyr::rename(c("indicator" = "Government expenditure per student, secondary"))
+all.edu <- full_join(all.edu, XPDSECOST)
+
+#9
+## Government expenditure per student, primary (% of GDP per capita) ❌
+XPDPRIMST <- data %>% filter(`Indicator Code` == "SE.XPD.PRIM.PC.ZS") 
+XPDPRIMST <- XPDPRIMST %>% 
+  gather(key = "year", value = "SE.XPD.PRIM.PC.ZS", 5:(ncol(XPDPRIMST) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.XPD.PRIM.PC.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(XPDPRIMST, 
+                         "Government expenditure per student, primary (% of GDP per capita)", 
+                         "(% of GDP per capita)", 
+                         "#F3A8A8")
+XPDPRIMST <- XPDPRIMST %>% plyr::rename(c("indicator" = "Government expenditure per student, primary"))
+all.edu <- full_join(all.edu, XPDPRIMST)
+
+#10
+## Pupil-teacher ratio, tertiary ❌
+PTTER <- data %>% filter(`Indicator Code` == "SE.TER.ENRL.TC.ZS") 
+PTTER <- PTTER %>% 
+  gather(key = "year", value = "SE.TER.ENRL.TC.ZS", 5:(ncol(PTTER) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.TER.ENRL.TC.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(PTTER, 
+                         "Pupil-teacher ratio, tertiary", 
+                         "", 
+                         "#F3A8A8")
+PTTER <- PTTER %>% plyr::rename(c("indicator" = "Pupil-teacher ratio, tertiary"))
+all.edu <- full_join(all.edu, PTTER)
+
+#11
+## Pupil-teacher ratio, primary ❌
+PTPRI <- data %>% filter(`Indicator Code` == "SE.PRM.ENRL.TC.ZS") 
+PTPRI <- PTPRI %>% 
+  gather(key = "year", value = "SE.PRM.ENRL.TC.ZS", 5:(ncol(PTPRI) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.PRM.ENRL.TC.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(PTPRI, 
+                         "Pupil-teacher ratio, primary", 
+                         "", 
+                         "#F3A8A8")
+PTPRI <- PTPRI %>% plyr::rename(c("indicator" = "Pupil-teacher ratio, primary"))
+all.edu <- full_join(all.edu, PTPRI)
+
+#12
+## Secondary education, vocational pupils ❌
+VOC <- data %>% filter(`Indicator Code` == "SE.SEC.ENRL.VO") 
+VOC <- VOC %>% 
+  gather(key = "year", value = "SE.SEC.ENRL.VO", 5:(ncol(VOC) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.SEC.ENRL.VO) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(VOC, 
+                         "Secondary education, vocational pupils", 
+                         "", 
+                         "#F3A8A8")
+VOC <- VOC %>% plyr::rename(c("indicator" = "Secondary education, vocational pupils"))
+all.edu <- full_join(all.edu, VOC)
+
+
+#13
+## Secondary education, general pupils
+GEN <- data %>% filter(`Indicator Code` == "SE.SEC.ENRL.GC") 
+GEN <- GEN %>% 
+  gather(key = "year", value = "SE.SEC.ENRL.GC", 5:(ncol(GEN) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.SEC.ENRL.GC) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(GEN, 
+                         "Secondary education, general pupils", 
+                         "", 
+                         "#F3A8A8")
+GEN <- GEN %>% plyr::rename(c("indicator" = "Secondary education, general pupils"))
+all.edu <- full_join(all.edu, GEN)
+
+#14
+## Secondary education, pupils
+SEC <- data %>% filter(`Indicator Code` == "SE.SEC.ENRL") 
+SEC <- SEC %>% 
+  gather(key = "year", value = "SE.SEC.ENRL", 5:(ncol(SEC) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.SEC.ENRL) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(SEC, 
+                         "Secondary education, pupils", 
+                         "", 
+                         "#F3A8A8")
+SEC <- SEC %>% plyr::rename(c("indicator" = "Secondary education, pupils"))
+all.edu <- full_join(all.edu, SEC)
+
+#15
+## Secondary education, duration (years)
+DURS <- data %>% filter(`Indicator Code` == "SE.SEC.DURS") 
+DURS <- DURS %>% 
+  gather(key = "year", value = "SE.SEC.DURS", 5:(ncol(DURS) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.SEC.DURS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(DURS, 
+                         "Secondary education, duration", 
+                         "(years)", 
+                         "#F3A8A8")
+DURS <- DURS %>% plyr::rename(c("indicator" = "Secondary education, duration"))
+all.edu <- full_join(all.edu, DURS)
+
+#16
+## Lower secondary school starting age (years)
+AGES <- data %>% filter(`Indicator Code` == "SE.SEC.AGES") 
+AGES <- AGES %>% 
+  gather(key = "year", value = "SE.SEC.AGES", 5:(ncol(AGES) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.SEC.AGES) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(AGES, 
+                         "Lower secondary school starting age", 
+                         "(years)", 
+                         "#F3A8A8")
+AGES <- AGES %>% plyr::rename(c("indicator" = "Lower secondary school starting age"))
+all.edu <- full_join(all.edu, AGES)
+
+#18
+## Children out of school, primary ❌
+UNERNUM <- data %>% filter(`Indicator Code` == "SE.PRM.UNER") 
+UNERNUM <- UNERNUM %>% 
+  gather(key = "year", value = "SE.PRM.UNER", 5:(ncol(UNERNUM) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.PRM.UNER) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(UNERNUM, 
+                         "Children out of school, primary", 
+                         "", 
+                         "#F3A8A8")
+UNERNUM <- UNERNUM %>% plyr::rename(c("indicator" = "Children out of school, primary"))
+all.edu <- full_join(all.edu, UNERNUM)
+
+#19
+## Primary education, teachers ❌
+PRMTCHR <- data %>% filter(`Indicator Code` == "SE.PRM.TCHR") 
+PRMTCHR <- PRMTCHR %>% 
+  gather(key = "year", value = "SE.PRM.TCHR", 5:(ncol(PRMTCHR) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.PRM.TCHR) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(PRMTCHR, 
+                         "Primary education, teachers", 
+                         "", 
+                         "#F3A8A8")
+PRMTCHR <- PRMTCHR %>% plyr::rename(c("indicator" = "Primary education, teachers"))
+all.edu <- full_join(all.edu, PRMTCHR)
+
+#20
+## Gross intake ratio in first grade of primary education, total (% of relevant age group) ❌
+GINT <- data %>% filter(`Indicator Code` == "SE.PRM.GINT.ZS") 
+GINT <- GINT %>% 
+  gather(key = "year", value = "SE.PRM.GINT.ZS", 5:(ncol(GINT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.PRM.GINT.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(GINT, 
+                         "Gross intake ratio in first grade of primary education, total (% of relevant age group)", 
+                         "(% of relevant age group)", 
+                         "#F3A8A8")
+GINT <- GINT %>% plyr::rename(c("indicator" = "Gross intake ratio in first grade of primary education, total"))
+all.edu <- full_join(all.edu, GINT)
+
+#22
+## Repeaters, primary, male (% of male enrollment) 
+PRMREPT <- data %>% filter(`Indicator Code` == "SE.PRM.REPT.MA.ZS") 
+PRMREPT <- PRMREPT %>% 
+  gather(key = "year", value = "SE.PRM.REPT.MA.ZS", 5:(ncol(PRMREPT) - 1)) %>% 
+  select(country = `Country Name`, year, indicator = SE.PRM.REPT.MA.ZS) %>% drop_na() %>%
+  filter(year >= 1998 & year <= 2017)
+draw.iran.vs.world.chart(PRMREPT, 
+                         "Repeaters, primary, male (% of male enrollment)", 
+                         "(% of male enrollment)", 
+                         "#F3A8A8")
+PRMREPT <- PRMREPT %>% plyr::rename(c("indicator" = "Repeaters, primary, male"))
+all.edu <- full_join(all.edu, PRMREPT)
+```
+
+
+### Q6
+
+#### Replacing NAs
+
+This time, when I removed all NAs, I was left with very few countries to work with. Therefore I decided to replace each of them with the average of each country.  
+<br>
+In order to do this, I've used the `na.aggregate()` method in the `zoo` package.
+```{r}
+all.edu.clusters <- all.edu %>%
+  dplyr::group_by(country) %>% sapply(as.numeric) %>% na.aggregate() %>% as.data.frame()
+
+
+all.edu.clusters$country <- all.edu$country
+
+all.edu.clusters <- all.edu.clusters %>% 
+  dplyr::select(-year) %>% 
+  dplyr::group_by(country) %>% 
+  dplyr::summarise_all(funs(mean))
+```
+
+#### Cluster Analysis by K-means
+
+```{r}
+kcl.edu <- kmeans(all.edu.clusters %>% dplyr::select(-country), centers = 3)
+
+all.edu.clusters$cluster <- kcl.edu$cluster
+kcl.edu
+```
+
+
+#### Iran's cluster
+```{r}
+iran.edu.cluster <- all.edu.clusters %>% dplyr::filter(country %>% str_detect("Iran"))
+all.edu.clusters %>% dplyr::select(country, cluster) %>% dplyr::filter(cluster == iran.edu.cluster$cluster) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+### Testing The Clusters Using PCA
+
+```{r}
+edu.cluster.pca = prcomp(all.edu.clusters %>% dplyr::select(-country), center = T, scale. = T)
+ggbiplot(edu.cluster.pca,
+         groups = as.factor(kcl.edu$cluster), ellipse = T) + 
+  theme_minimal()
+```
+
+
+If we remove the NAs we will also get a similar result:
+
+```{r, echo = F}
+all.edu.clusters <- all.edu %>% drop_na()
+all.edu.clusters <- all.edu.clusters %>% 
+  dplyr::select(-year) %>% 
+  dplyr::group_by(country) %>% 
+  dplyr::summarise_all(funs(mean))
+
+kcl.edu <- kmeans(all.edu.clusters %>% dplyr::select(-country), centers = 3)
+all.edu.clusters$cluster <- kcl.edu$cluster
+edu.cluster.pca = prcomp(all.edu.clusters %>% dplyr::select(-country), center = T, scale. = T)
+ggbiplot(edu.cluster.pca,
+         groups = as.factor(kcl.edu$cluster), ellipse = T) + 
+  theme_minimal()
+```
+
+
+# Cluster Analysis Using Hierarchical Models
+
+## Joining and Replacing NAs
+
+```{r}
+final <- all.econ %>% full_join(all.health) %>% full_join(all.edu)
+
+final.clusters <- final %>% dplyr::select(-country) %>% sapply(as.numeric) %>% na.aggregate() %>% as.data.frame()
+final.clusters$country <- final$country
+
+final.clusters <- final.clusters %>% 
+  dplyr::select(-year) %>% 
+  dplyr::group_by(country) %>% 
+  dplyr::summarise_all(funs(mean))
+
+rownames(final.clusters) <- final.clusters$country
+```
+
+## Drawing The Dendrogram
+
+```{r}
+dist = stats::dist(final.clusters,method = "euclidean")
+clus = hclust(dist,method = "complete")
+
+plot.new()
+plot(clus,hang = -1)
+rect.hclust(clus, k = 3)
+```
+
+
+Since there are about 260 countries in this dataframe and drawing all of them didn't give a clear picture, I've also sampled 10% of the data and will only draw the dendrogram for the dplyr::summariseed 25 or so. 
+
+### Sampling The Data
+```{r}
+final.iran <- final.clusters %>% 
+  dplyr::filter(country %>% str_detect("Iran"))
+final.world <- final.clusters %>%
+  dplyr::filter(!(country %>% str_detect("Iran"))) %>%
+  sample_frac(0.1)
+final.sample <- rbind(final.iran, final.world)
+```
+
+### Drawing The Dendrogram
+
+```{r}
+rownames(final.sample) <- final.sample$country
+dist = stats::dist(final.sample, method = "euclidean")
+clus = hclust(dist,method = "complete")
+
+plot.new()
+plot(clus,hang = -1)
+rect.hclust(clus, k = 3)
+```
+
+
+
+# Three Interesting Facts
+
+## The Deadliest Year in History
+
+
+> Indicator Used: Population, total
+
+For each country, I have computed the change in population in each year:
+
+```{r, echo = F}
+data.gathered <- data %>% 
+  gather(key = "year", value = "value", `1960`:`2017`) %>% 
+  dplyr::select(-X63) %>%
+  drop_na()
+
+data.pop <- data.gathered %>% 
+  filter(`Indicator Code` == "SP.POP.TOTL") %>% 
+  rename(c("value" = "population"))
+```
+
+```{r}
+data.pop.dif <- data.pop %>% 
+  group_by(`Country Name`) %>% 
+  arrange(`Country Name`, year) %>%
+  mutate(dif = population - lag(population)) %>%
+  dplyr::mutate(temp = row_number()) %>% filter(temp != 1) %>% select(-temp)
+```
+
+
+Now I've calculated the average of change in each year for every country, and drawn the plot:
+
+```{r, echo = F}
+data.pop.dif.mean <- data.pop.dif %>%
+  group_by(`Country Name`) %>% 
+  dplyr::summarise(avg_dif = mean(dif, na.rm = T))
+```
+
+
+
+
+```{r,echo = F}
+data.pop.dif.mean %>%
+  sample_n(100) %>%
+  arrange(desc(avg_dif)) %>%
+  hchart(type = 'column', hcaes(x = `Country Name`, y = avg_dif), borderColor = "black", name = "Average Change in Population per Year.", color = "#BC0000") %>%
+  hc_title(text = "Average Change in Population Per Year For Each Country",
+           align = 'center', 
+           style = list(fontSize = "30px")) %>% 
+  hc_subtitle(text = 'From 1960 to 2017', align = 'center', 
+              style = list(fontSize = "20px")) %>%
+  hc_xAxis(title = list(text = ""),
+           labels = list(style = list(fontSize = "15px"), rotation = -90), lineColor = "black", lineWidth = 1, 
+           tickWidth = 1, tickColor = "black", tickLength = 25) %>%
+  hc_yAxis(title = list(text = ""),
+           lineWidth = 1, lineColor = "black", tickColor = "black", tickLength = 5) %>% 
+  hc_add_theme(hc_theme_elementary())
+```
+
+Now, without further ado, the deadliest year of since 1960 is:
+
+```{r, echo = F}
+data.pop.dif %>% arrange(dif) %>% head(1) %>% dplyr::select(`Country Name`, year, dif) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+A whooping almost 7 million people died. 
+
+The average life expectancy of the world in 1961 was:
+```{r, echo = F}
+(life.exp %>% filter(year == 1961))$SP.DYN.LE00.IN %>% mean()
+```
+
+While the life expectancy of China was:
+```{r, echo = F}
+(life.exp %>% filter(country == "China" & year == 1961)) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+What happened this year that killed so many people was the **Great Chinese Famine**. 
+
+## The Deadliest War
+
+> Indicator Used: Battle-related deaths (number of people)
+
+Since we're still on the subject of death and depression, I've computed the number of deaths in battles. 
+
+```{r, echo = F}
+data.battledeath <- data.gathered %>% 
+  filter(`Indicator Code` == "VC.BTL.DETH") %>% 
+  rename(c("value" = "deaths"))
+```
+
+
+The most peaceful year was:
+
+```{r, echo = F}
+data.battledeath %>% arrange(deaths) %>% head(1) %>% dplyr::select(`Country Name`, year, deaths) %>% knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+Way to go Serbia. 
+
+The most distressful year was:
+
+```{r, echo = F}
+data.battledeath %>% arrange(desc(deaths)) %>% head(1) %>% dplyr::select(`Country Name`, year, deaths) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+Which is not surprising at all. 
+
+## Iran's Decline in Economics
+
+All everyone can discuss and complain about for the past few years is how much we used to be on top of the world, and sadly we're not anymore.  
+First of all, I'd like to test whether inflation in Iran grows with each passing year or not.
+
+```{r, echo = F}
+data.inflation <- data.gathered %>%
+  filter(`Indicator Code` == "FP.CPI.TOTL.ZG") %>% 
+  rename(c("value" = "inflation")) %>% 
+  dplyr::select(`Country Name`, year, inflation) %>%
+  mutate(year = as.numeric(year), inflation = as.numeric(inflation))
+
+inflation.iran <- data.inflation %>%
+  filter(`Country Name` == "Iran, Islamic Rep.") %>% 
+  dplyr::select(year, inflation) 
+  
+
+cor.test(inflation.iran$year, inflation.iran$inflation)
+```
+Based on the results of the correlation test, it seems that inflation does kind of increase each year. 
+
+To feel slightly better about ourselves, let's take a look at the highest values:
+
+```{r, echo = F}
+data.inflation %>% 
+  arrange(desc(inflation)) %>% head(10) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+Wow it seems like Zimbabwe was having a pretty tough year in 2017. The next time you want to feel sad and hopeless, think of how the people of Zimbabwe felt that year. 
+
+But not so fast. Let's take a look at the closest year afterwards that we have records of:
+
+```{r, echo = F}
+data.inflation %>% 
+  filter(`Country Name` == "Zimbabwe") %>% 
+  filter(year > 2007) %>% arrange(year) %>% head(1) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+Talk about a comeback.
+
+Now let's dive back into depression and draw the chart for Iran:
+
+```{r, echo = F}
+inflation.iran %>% 
+  hchart(type = "line", hcaes(x = year, y = inflation), color = "#BC0000", name = "Inflation") %>%
+  hc_title(text = "Inflation in Iran",
+           align = 'center', 
+           style = list(fontSize = "30px")) %>% 
+  hc_subtitle(text = 'From 1960 to 2017', align = 'center', 
+              style = list(fontSize = "20px", color = "white")) %>%
+  hc_xAxis(title = list(text = ""),
+           labels = list(style = list(fontSize = "15px")), lineColor = "black", lineWidth = 1, 
+           tickWidth = 1, tickColor = "black", tickLength = 25) %>%
+  hc_yAxis(title = list(text = ""),
+           lineWidth = 1, lineColor = "black", tickColor = "black", tickLength = 5) %>% 
+  hc_add_theme(hc_theme_elementary())
+```
+
+2013 was the year of our lord and saviour president Rouhani, with an inflation of 39%. #Rouhani_Mochakerim
+
+
