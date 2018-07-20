@@ -1,0 +1,485 @@
+---
+title: "Eleventh Week: Association rules"
+subtitle: "Movie recommender systems"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output: html_document
+---
+
+```{r setup, include = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 12,fig.height = 12,fig.align ="center", 
+                      fig.retina=1)
+```
+
+> I haven't included the code for some of the parts in order to keep this document as neat as I can.
+
+```{r}
+setwd("/Users/deyapple/Documents/Courses/Term04/DA/Homework/hw_12")
+
+library(readr)
+library(tidyverse)
+library(kableExtra)
+library(wordcloud2)
+library(highcharter)
+library(tidytext)
+library(arules)
+library(arulesViz)
+library(colorspace)
+
+setwd("/Users/deyapple/Documents/Courses/Term04/DA/Resources/Slides/week_12/")
+# Movies
+movie <- read_lines("/Users/deyapple/Documents/Courses/Term04/DA/Resources/Slides/week_12/ml-10M100K/movies.dat") %>% 
+  str_replace_all("::", "\036") %>%
+  paste(collapse = "\n") %>%
+  read_delim(delim = "\036", escape_double = F, trim_ws = T,
+             col_names = c('MovieID', 'Title', 'Genres'))
+
+# Tags
+tag = read_delim('ml-10M100K/tags.dat',delim = "::" ,col_names = c("UserID",NA,"MovieID",NA,"Tag",NA,"Timestamp"))
+tag = tag %>% select(1,3,5,7) 
+
+# Ratings
+rating = read_delim('ml-10M100K/ratings.dat',delim = "::" ,col_names = c("UserID",NA,"MovieID",NA,"Rating",NA,"Timestamp"))
+rating = rating %>% select(1,3,5,7) 
+```
+
+
+# Q1
+
+<br>
+
+## A: The Most Popular Movie
+
+I've used the `inner_join()` function on the `movie` and `rating` dataset. Then, for each movie, I've calculated the average rating of all the users who have seen it, and used that to compare popularity. 
+
+<br>
+
+Also I've only chosen the movives that more than 1000 people had rated. 
+
+<br>
+```{r, echo = F}
+avg.rate <- inner_join(movie, rating) %>% 
+  group_by(Title) %>% summarise(avg = mean(Rating, na.rm = T), 
+                                count = n())
+
+avg.rate %>% filter(count >= 1000) %>% arrange(desc(avg)) %>% head(10) %>%
+  select(Title, `Average Rating`= avg, count) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+
+    
+<br> <br> <br>
+
+So the most popular film is The Shawshank Redemption. 
+
+<br> <br>
+<hr> 
+<br>
+
+## B: The Most Views on A Movie
+
+In this section, I've used the dataset from the previous section again, and arranged the rows based on the number of viewers. 
+
+<br>
+```{r, echo = F}
+avg.rate %>% arrange(desc(count)) %>% head(10) %>% 
+  select(Title, `Average Rating`= avg, count) %>%
+  knitr::kable(format = "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+  
+<br> <br>
+<hr> 
+<br>
+
+## C: The Most Hated Movie
+
+<br>
+
+```{r, echo = F}
+avg.rate %>% filter(count >= 1000) %>% arrange(avg) %>% head(10) %>%
+  select(Title, `Average Rating`= avg, count) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+<br> <br>  <br> 
+
+The most hated movie of all time seems to be Battlefield Earth. Although, I have to say, the makers of the Police Academy franchise should have known the let go after the 5th one. Just sayin'. 
+
+  
+<br> <br>
+<hr> 
+<br>
+
+## D: The Number of Movies Made in Each Year
+
+<br>
+
+I've noticed that in the `movies` dataset, the release year of each movie is inside parenthesis in front of its name. So I've used regex to extract the years. 
+<br>
+I've also noticed that in some of the movies, the last half of the title - which contains the release year- is in the `Genres` column by mistake. I've also handles these cases.
+
+<br>
+
+```{r, echo = F}
+yearly <- movie %>% mutate(year = str_extract(Title, "\\((\\d+)\\)$") %>% str_remove("\\(") %>% str_remove("\\)")) %>% mutate(year2 = str_extract(Genres, "\\((\\d+)\\)$") %>% str_remove("\\(") %>% str_remove("\\)")) %>%
+  mutate(year = ifelse((is.na(year)) & (!is.na(year2)), year2, year)) %>%
+  select(-year2) %>% drop_na()
+
+year.num <- yearly %>% drop_na() %>% group_by(year) %>% summarise(count = n())
+year.num %>% knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left") %>%
+  scroll_box(width = "110px", height = "600px")
+```
+
+  
+<br> <br>
+<hr> 
+<br>
+
+## E: The Genre People Liked in Each Year
+
+<br>
+
+After extracting the years in the previous section, I've used the `Genres` column in the dataset to determine the Genre of each movie. 
+<br>
+```{r, echo = F}
+genre.year <- yearly %>% separate(Genres, c("Genre1", "Genre2", "Genre3", "Genre4", "Genre5", "Genre6"), sep = "\\|")
+genre.year[is.na(genre.year)] <- 0
+genre.year <- genre.year %>% filter(year != 0) %>% gather("Genre", "Value", Genre1:Genre6) %>%
+  filter(Value != "0") %>% filter(Value != "(no genres listed)") %>% select(-Genre) %>% rename(genre = Value) 
+```
+
+
+I've constructed a dataset that has the genre of each movie in different rows of the same column. For example if a movie has 3 differnet genres, there are 3 rows corresponding to them. 
+
+<br>
+
+Most liked genres based on number of ratings:
+<br> <br> <br> 
+```{r, echo = F}
+genre.popular.num <- genre.year %>% 
+  select(year, genre) %>%
+  group_by(year, genre) %>% 
+  summarise(count = n()) %>% 
+  ungroup() %>% 
+  group_by(year) %>% 
+  mutate(rank = rank(-count, ties.method = "first")) %>%
+  filter(rank == 1) %>% 
+  select(-rank) 
+genre.popular.num %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left") %>%
+  scroll_box(width = "175px", height = "600px")
+
+```
+<br> <br> <br>
+Most liked genres based on average rating:
+
+<br>
+
+```{r, echo = F}
+rating.avg <- rating %>% group_by(MovieID) %>% summarise(avg = mean(Rating, na.rm = T), 
+                                                         count = n())
+genre.popular <- inner_join(rating.avg, genre.year)
+genre.popular.rate <- genre.popular %>% 
+  filter(count >= 1000) %>%
+  group_by(year, genre) %>% 
+  summarise(avg_rate = weighted.mean(avg, count)) %>%
+  ungroup() %>%
+  group_by(year) %>% 
+  mutate(rank = rank(-avg_rate, ties.method = "first")) %>% 
+  filter(rank == 1) %>% 
+  select(-rank)
+genre.popular.rate %>% mutate(avg_rate = avg_rate %>% round(3)) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left") %>%
+  scroll_box(width = "225px", height = "600px")
+```
+
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q2
+
+## A: The Number of Movies in Each Genre
+
+<br>
+
+I've already constructed a dataset consisting of movies, their release year and their genres.
+
+<br> <br> <br>
+
+```{r, echo = F}
+genre.num <- genre.year %>% 
+  group_by(genre) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+genre.num$genre <- factor(genre.num$genre, 
+                          levels = genre.num$genre[order(genre.num$count)])
+
+genre.num %>% 
+  hchart(type = 'column', 
+         hcaes(x = genre, y = count), 
+         name = "Number of Movies", 
+         color = '#D43A53', borderColor = 'black') %>%
+  hc_title(text = "Number of Movies Made in Each Genre", align = "center", style = list(fontSize="30px")) %>%
+  hc_xAxis(title = list(text = "Genre", style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white", fontSize = "15px"))) %>%
+  hc_yAxis(title = list(text = "Number of Movies Made",style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+```
+
+<br> <br>
+<hr> 
+<br>
+
+## B: Correlation Plot of Genres
+
+<br>
+
+For this part, I've constructed a data frame in which each row corresponds to a mavie and each column represents a genre. If the value of the column is 1 it means that the movie in that row has that genre, and if it's a zero, then it means that it doesn't. Then I've drawn the correlation plot of the columns.  
+
+
+<br> <br> <br>
+
+```{r, echo = F}
+hchart(genre.year %>% 
+  mutate(hasGenre = 1) %>% 
+  group_by(genre) %>% 
+  mutate(count = n()) %>% 
+  filter(count > 1) %>% 
+  drop_na() %>% 
+  ungroup() %>% 
+  select(-count) %>% 
+  spread(genre, hasGenre, fill = 0) %>% 
+  select(-MovieID, -year, -Title) %>% cor())
+```
+
+<br> <br>
+<hr> 
+<br>
+
+## C: Average Rating of Each Genre
+
+<br>
+
+```{r, echo = F}
+genre.avg.rate <- genre.popular %>% group_by(genre) %>%
+  summarise(avg_rate = weighted.mean(avg, count)) %>% arrange(desc(avg_rate))
+
+genre.avg.rate %>% 
+  hchart(type = 'column', 
+         hcaes(x = genre, y = avg_rate %>% round(3)), 
+         name = "Average Rating", 
+         color = '#D43A53', borderColor = 'black') %>%
+  hc_title(text = "Average Rating of Each Genre", align = "center", style = list(fontSize="30px")) %>%
+  hc_xAxis(title = list(text = "Genre", style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white", fontSize = "15px"))) %>%
+  hc_yAxis(title = list(text = "Average Rating",style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+
+```
+
+<br> <br>
+<hr> 
+<br>
+
+## D: Golden Age of Cinema
+
+<br>
+
+My definition for The Golden Age is the years where first of all the number of movies sold were high, and second of all the average rating of each movie was also high. 
+
+<br>
+```{r, echo = F}
+avg.rate %>%
+  select(Title, rating = avg) %>%
+  inner_join(yearly, by = "Title") %>% 
+  group_by(year) %>% summarise(rate = mean(rating, na.rm = T), 
+                               num = n()) %>% 
+  arrange(desc(num), rate) %>% head(10) %>% 
+  select(Year = year, Rate = rate, `Movies Made` = num) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+<br>
+
+Based on the table above we can conclude that the golden year was 2002 and the golden age could be considered between 1995 and 2004. 
+<br>
+However, based on [this Wikipedia page](https://en.wikipedia.org/wiki/Cinema_of_the_United_States#Classical_Hollywood_cinema_and_the_Golden_Age_of_Hollywood_(1917–1960)), the golden age of cinema started in 1927, when The Jazz Singer ended the silent movie era, and many movies were released afterwards. However, in the `movie` dataset, there are less than 27 movies listed in this year. This might be due to the incompleteness of the dataset. 
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q3
+
+
+```{r}
+
+wordcloud.data <- movie %>%
+  mutate(Title = Title %>% str_remove("\\((\\d+)\\)")) %>%
+  filter(Title %>% str_detect("Great Performances\" .*") != TRUE) %>%
+  unnest_tokens(word, Title) %>%
+  group_by(word) %>% summarise(freq = n()) %>% ungroup() %>% mutate(word = as.character(word), 
+                                                                    freq = as.numeric(freq)) %>%
+  filter(word != "a.k.a")
+library(corpus)
+wordcloud.data %>% anti_join(stop_words) %>% 
+  filter(!(word %in% stopwords_fr)) %>%
+  arrange(desc(freq)) %>% wordcloud2(size = 0.5)
+```
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q4
+
+<br>
+
+First I've made a dataset consisting of two columns: a) UserID b) a list of movies the user has seen.
+
+<br>
+```{r}
+final <- rating %>% inner_join(movie) %>% group_by(UserID) %>% summarise(movies = list(c(Title)))
+final$movies[1:2]
+```
+<br>
+
+Then I've made an object of type transaction from the movies:
+
+<br>
+```{r}
+movie.transactions <- as(final$movies, "transactions")
+```
+<br>
+
+Afterwards I've defined a function that takes in as parameters an object of type transaction, and a movie name. 
+<br>
+It returns a list of rules containing the top 5 movies most alike the input movie.
+<br>
+```{r}
+
+get.most.alike <- function(transaction, movie){
+  mrules <- apriori(transaction, 
+                           parameter = list(support = 0.001, confidence = 0.15, minlen = 2), 
+                           appearance = list(default = "rhs", lhs = movie), 
+                           control = list (verbose = F))
+  top.rules <- sort (mrules, by = "lift", decreasing = TRUE)
+  inspect(top.rules[1:5])
+}
+```
+<br>
+
+Finally, I've called the function on the four movies. 
+<br>
+```{r}
+get.most.alike(movie.transactions, "Castle in the Sky (Tenkû no shiro Rapyuta) (1986)")
+get.most.alike(movie.transactions, "Cast Away (2000)")
+get.most.alike(movie.transactions, "Memento (2000)")
+get.most.alike(movie.transactions, "No Country for Old Men (2007)")
+```
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q5
+
+<br>
+
+[This](https://github.com/ShabnamSheikhha/Data-Analysis-Home-Works) is the github link.
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q6: Criticisms
+
+
+When I wrote the next 5 parts I had originally decided to write this entire assignment in Persian, but since I have the attention span and memory of a goldfish, naturally I forgot. So I'm just gonna switch to Persian from now on. 
+
+<br> <br> 
+
+<p dir="RTL" align="right" style="font-size:13pt; font-family:B Nazanin">
+<ol style="list-style-type:circle; font-size:13pt; font-family:B Nazanin" dir="RTL" align="right">
+<li> سوالات پایانترم اصلا بر محور آن چیزی که در کلاس درس تدریس شد نبود. درس بیشتر جنبهي کاربردی و شناخت داده داشت، ولی سوالات پایانترم کاملا حول جبرخطی بود. در راستای همین، بهتر بود اگر به جنبهی ریاضیاتی بعضی از مباحث مانند تحلیل مولفههای اصلی و رگرسیون بیشتر پرداخته میشد و بعد کد آنها در R را بررسی میکردیم. </li>
+<li> خیلی از کدهایی که سر کلاس از ما خواسته میشد که بزنیم، در اسلایدهای درس موجود بود و به جز بعضی موارد، کد جدیدی نمیزدیم. به همراه اینکه در مواقعی که کدهای جدید سر کلاس میزدیم صرفا چند نفر خاص که پیشزمینهی قبلی داشتند در بحث شرکت میکردند و کد میزدند. </li>
+<li> حجم مطالب تدریس شده خیلی زیاد بود و علاوه بر آن اصلا توزیع مطالب در هر هفته منطقی نبود. ۳-۴ هفتهی اول کار با R بود، یک هفته مبحث نقشه تدریس شد، درحالی که کل مبحث PCA و کل مبحث Linear Regression هر کدام در یک هفته تدریس شد.به نظر میرسد درسی به مهمی و سختی PCA که نیاز به درک و شهود عمیق دارد زمان بیشتری لازم داشته باشد تا تدریس نقشه که با سرچ نیز میتوان همهی توابع را یافت. </li>
+<li> حجم تمرینها به شدت زیاد بود به طوری که من به شخصه اصلا وقت نمیکردم از بار آموزشی آن استفاده ببرم. صرفا سوالات را حل میکردم که تمرین تمام شود.  </li>
+<li>  بعضی از سوالات تمرینها به شدت ابهام داشت و این ابهام ها خیلی دیر و بعد از اینکه چندین نفر آن را مطرح کرده بودند برطرف میشد.  </li>
+</ul>
+</p>
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q7: Suggestions
+
+<br>
+
+
+<p dir="RTL" align="right" style="font-size:13pt; font-family:B Nazanin">
+<ol style="list-style-type:circle; font-size:13pt; font-family:B Nazanin" dir="RTL" align="right">
+<li>یک صفحه سوال و جواب برای هر تمرین در پیاتزا یا در CW قرار دهید تا بچه ها ابهاماتشان را در آنجا بپرسند. گروه تلگرام برای ارتباط بین دانشجو و استاد خیلی جالب نیست چون بیشتر بحثها حالت مشورت بین دانشجویان را دارد. با این کار همچنین حالت رسمی بودن درس نیز حفظ میشود.  </li>
+<li> تاریخ ریلیز شدن و ددلاین تمرینها منطقیتر و فیکس تر باشد. اکثر این ترم ما در حالی که سر کلاس درس جدید تدریس میشد ما درگیر تمرین هفتهی قبل بودیم و نمیرسیدیم روی درس جدید وقت بگذاریم. به نظر من دلیل این است که تمرین ها هر هفته و با حجم زیاد ریلیز میشدند.  </li>
+<li>  تمرینات این درس حالت پیوسته دارد. یعنی یک سری از سوالات به شکلهای مختلف در سریهای متفاوت تمرین حضور دارند. به همین دلیل بهتر است که نمرهی تمرینات را در طول ترم یا حداقل قبل از میانترم اعلام کنید تا اشتباهاتمان را یاد بگیریم و در تمرینهای بعد یا آزمون میانترم آنها را تکرار نکنیم. </li>
+<li> در مبحث آزمون فرض بهتر بود که خودمان بدون استفاده از توابع آماده در R بعضی ها را پیادهسازی کنیم و سعی کنیم آمارهها را به دست بیاوریم تا عمیق تر بفهمیم. یا حداقل این کار در تمرین آورده میشد. همچنین در هفتهای که در رابطه با استرینگها بحث شد، بهتر بود مسئلهی n-grams یا مسائل مرتبط با آن مطرح شود و نه کاربرد یک سری توابع در R. </li>
+<li> یک سری تمرین تئوری نیز به همراه تمرین عملی برای فهم عمیقتر مطالب باشد. برای اینکه درس از مسیر اصلی خود خارج شود میتوان تحویل بعضی از این مدل تمرینها را اختیاری کرد. شبیه سوالاتی که در میانترم در رابطه با t test و در پایانترم در رابطه با PCA باعث میشود با منطق پشت تابعهای R بیشتر آشنا باشیم.  </li>
+</ul>
+</p>
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q8: New Statistical Subjects
+ 
+ <br>
+ 
+<ol> 
+<li> Linear Discriminant Analysis (Check [this](https://www.r-bloggers.com/computing-and-visualizing-lda-in-r/) and [this](https://www.r-bloggers.com/linear-discriminant-analysis-in-r-an-introduction/))</li> 
+<li> Survival Analysis (Check [this.]( https://en.wikipedia.org/wiki/Survival_analysis#Survival_analysis_in_R)) </li>
+<li> Time Series Analysis ( Check [this](http://a-little-book-of-r-for-time-series.readthedocs.io/en/latest/src/timeseries.html) and [this](https://www.analyticsvidhya.com/blog/2015/12/complete-tutorial-time-series-modeling/)) </li>
+</ol>
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q9: New Datasets
+
+<p dir="RTL" align="right" style="font-size:13pt; font-family:B Nazanin">
+<ol style="list-style-type:circle; font-size:13pt; font-family:B Nazanin" dir="RTL" align="right">
+<li> دادهی ترافیک در تهران </li>
+<li>  متن اشعار و متون قدیمی فارسی. مثلا اشعار مولانا و … </li>
+<li> ویدیوهای یوتیوب. برای مثال تعداد viewها، تعداد likeها، کامنتها، نام اکانت سازندهی ویدیو، مدت زمان، موضوع و … </li>
+<li> آهنگهای spotify. برای مثال تعداد upvoteها، خواننده، مدت زمان، ژانر، تاریخ ساخت و …  </li>
+<li>  نامزدین و برندههای اسکار. برای مثال تلاش برای پیشبینی برندههای اسکار آتی.  </li>
+</ul>
+</p>
+
+<br> <br>
+<hr> <hr> 
+<br>
+
+# Q10: Facts Learned in Class
+
+<p dir="RTL" align="right" style="font-size:13pt; font-family:B Nazanin">
+<ol style="list-style-type:circle; font-size:13pt; font-family:B Nazanin" dir="RTL" align="right">
+<li> مهمترین چیز این است که ابتدا داده را بشناسیم. جنس متغیرها، کورلیشن بین آنها، تراکم و یا پراکندگی مقادیر و … . سپس میتوانیم روش مناسب برای تحلیل را انتخاب کنیم.  </li>
+<li>  دانش ریاضی خیلی اهمیت زیادی در آمار و کارهای تحلیل داده دارد.  </li>
+<li> نمودارها باید واضح باشند. اطلاعاتی که نشان میدهند به اندازهي کافی باشد. سعی نکنیم موضوعات زیادی را در یک نمودار بگنجانیم. همچنین، هر نمودار برای منظور خاصی است. مثلا نمودار ستونی برای مقایسهي تعداد در دسته های مختلف، نمودار خطی برای نشان دادن سریهای زمانی و … میباشد.  </li>
+<li> سوالاتی که در رابطه با داده ها طرح میکنیم، واضح و قشنگ باشد.  </li>
+</ul>
+</p>
+
+<br> <br> <br>
