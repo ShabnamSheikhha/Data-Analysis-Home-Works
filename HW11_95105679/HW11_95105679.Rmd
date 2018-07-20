@@ -1,0 +1,746 @@
+---
+title: "Eleventh Week: Create Map"
+subtitle: "Earthquake Analysis"
+author: "Shabnam Sheikhha (95105679)"
+date: "`r Sys.time()`"
+output:
+  prettydoc::html_pretty:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment = "",error = F,message = F,
+                      warning = F,fig.width = 15,fig.height = 8,fig.align ="center", 
+                      fig.retina=1)
+```
+
+> I haven't included the code for some of the parts in order to keep this document as neat as I can.
+
+```{r}
+setwd("/Users/deyapple/Documents/Courses/Term04/DA/Homework/hw_11")
+library(tidyverse)
+library(plotly)
+library(highcharter)
+library(ggmap)
+library(leaflet)
+library(plotly)
+library(kableExtra)
+library(ggthemes)
+library(sp)
+library(shiny)
+
+disaster <- read_delim("data/disaster.txt", "\t", escape_double = F, trim_ws = T)
+world <- map_data("world")
+worldwide <- read_csv("data/worldwide.csv") ## world earthquake data
+```
+
+
+# 3D chart of Latitude, Longitude and Depth
+
+<br>
+
+To distinguish the points as much as possible, I've also based the color as well as the size on the Magnitude of each earthquake.
+  
+    
+<br> <br> <br>
+
+```{r, echo = F}
+earthquakes <- read_rds("data/historical_web_data_26112015.rds")
+colors <- c('#4AC6B7', '#1972A4', '#965F8A', '#FF7070', '#C61951')
+plot_ly(earthquakes, x = ~Latitude, 
+        y = ~Longitude, z = ~Depth, size = ~Magnitude, color = ~Magnitude,
+        colors = colors,
+        hoverinfo = 'text', mode = 'markers',
+        hovertext = ~paste('Latitude: ', Latitude,
+                      '\n Longitude: ', Longitude,
+                      '\n Depth: ', Depth, 
+                      '\n Magnitude', Magnitude),
+        marker = list(symbol = 'circle', sizemode = 'diameter')) %>%
+  add_markers() %>%
+  layout(title = 'Historical Worldwide Earthquake Information', 
+         scene = list(xaxis = list(title = 'Latitude',
+                                   ticklen = 5,
+                                   gridwidth = 2),
+                      yaxis = list(title = 'Longitude',
+                                   ticklen = 5,
+                                   gridwith = 2),
+                      zaxis = list(title = 'Depth',
+                                   ticklen = 5,
+                                   gridwith = 2))) %>%
+  shiny::div(align = 'center')
+
+
+
+```
+  
+<br> <br>
+<hr> <hr>
+<br>
+        
+        
+# Tsunami Throughout The Years
+<br> <br> <br>
+
+```{r, echo = F}
+tsunami <- read_delim("data/disaster.txt", "\t", escape_double = FALSE, trim_ws = TRUE) %>%
+  filter(!is.na(FLAG_TSUNAMI)) %>%
+  plyr::rename(c("LATITUDE" = "lat","LONGITUDE" = "lon", "EQ_PRIMARY" = "z","COUNTRY" = "name",
+                 "YEAR" = "year")) %>% 
+  dplyr::select(lat, lon, z, name, year) %>% drop_na()
+
+sequences <- map2(tsunami$year, tsunami$z, function(x, y){ ifelse(x == tsunami$year, y, 0)})
+
+temp <- data_frame(
+  lat = tsunami$lat,
+  lon = tsunami$lon,
+  z = tsunami$z,
+  sequence = sequences
+)
+
+
+hcmap() %>% 
+  hc_add_series(data = temp, type = "mapbubble",
+                minSize = 0, maxSize = 15, name = "Magnitude") %>% 
+  hc_plotOptions(series = list(showInLegend = FALSE)) %>%
+  hc_motion(enabled = TRUE, series = 1, labels = tsunami$year,
+            loop = F, autoPlay = F, 
+            updateInterval = 1000, magnet = list(step =  1)) %>% 
+  hc_plotOptions(series = list(showInLegend = FALSE)) %>%
+  hc_title(text = "Historical Worldwide Tsunami Occurences") %>%
+  hc_subtitle(text = "Size Based on Magnitude<br>Hover over each point to view the magnitude.") %>%
+  hc_add_theme(hc_theme_smpl())
+```
+
+<br> <br>
+<hr> <hr>
+<br>
+
+# Iran 2D Earthquake Density
+
+<br> <br> <br>
+```{r, echo = F}
+iequake <- read_rds("data/iran_earthquake.rds") 
+imap = read_rds("data/Tehrn_map_6.rds")
+ggmap(imap) +
+  stat_density_2d(data = iequake, aes(x = Long, y = Lat, fill = ..level..), 
+                  geom = "polygon", show.legend = FALSE)
+```
+<br> <br> 
+<hr> <hr>
+<br>
+
+# Probility of High Intensity Earhquake in Iran
+
+<br>
+
+We want to calculate this using conditional probability. In order words we want to compute the following formula:
+<br>
+$$ P(B | A) = \frac{P(B \cap A)}{P(A)}$$
+<br>
+
+But first we need to find out what events exactly $A$ and $B$ are.  
+First we look at the most recent earthquake in Iran with an intensity higher than 7. 
+ 
+
+```{r, echo = F}
+iequake.high <- disaster %>% 
+  dplyr::select(country = COUNTRY, year = YEAR, month = MONTH, day = DAY, 
+                hour = HOUR, minute = MINUTE, second = SECOND, 
+                intensity = EQ_PRIMARY) %>%
+  filter(country == "IRAN") %>% 
+  filter(intensity >= 7)
+```
+
+<br>
+
+```{r, echo = F}
+iequake.high %>% 
+  arrange(desc(year)) %>% head(1) %>% knitr::kable() %>% kable_styling()
+```
+
+<br>
+We are now in the year 2018. So our condition is that in the past year, there have been no earthquakes with an intensity higher than 7.  
+So in conclusion we want to calculate the probability that there will be an earthquake in the next five years, given there have been none in the past year. So we can define the events $A$ and $B$ as follows:
+
+<br>
+
+$$\begin{cases}
+    A      & \quad \text{The high intensity earthquakes with no high intensity earthquakes in the following year. }\\
+    B  & \quad \text{The high intensity earthquakes with a high intensity earthquake in the next five years.}
+  \end{cases} $$
+  
+<br>
+
+In order to calculate the formula above, all we need to do is calculate the number of times these events occur. That is $|A|$ and $|A \cap B|$.  
+
+<br>
+```{r}
+A <- iequake.high %>% 
+  arrange(year, month, day, hour, minute, second) %>% mutate(dif = lead(year) - year) %>% 
+  filter(dif > 1)
+```
+
+
+```{r}
+AandB <- A %>% 
+  filter(dif <= 5)
+```
+
+<br>
+Probability:
+
+```{r}
+nrow(AandB) / nrow(A)
+```
+
+<br> <br>
+<hr> <hr>
+<br>
+
+# Map of Total and Average Number of Deaths by Earthquake
+
+```{r, echo = F}
+
+country.death <- disaster %>%
+  group_by(COUNTRY) %>% 
+  dplyr::summarise(count = sum(DEATHS, na.rm = T), avg = mean(DEATHS, na.rm = T)) %>% 
+  ungroup() %>% mutate(region = COUNTRY %>% tolower())
+country.region <- world %>% mutate(region = tolower(region))
+
+country.map.data <- country.death %>% inner_join(country.region, by = "region") %>% 
+  filter(count != 0)
+```
+
+
+```{r, echo = F}
+library(viridis)
+ggplot() +
+  geom_polygon(data = country.map.data, aes(fill = count, x = long, y = lat, group = group)) +
+  geom_path(data = country.map.data, aes(x = long, y = lat, group = group), 
+            color = "black", size = 0.1) +
+  coord_equal() +
+  theme_map() + 
+  theme(legend.position = "bottom", 
+        plot.title = element_text(size = 20, hjust = 0.5)) +
+  scale_fill_viridis(
+    option = "magma", 
+    direction = -1,
+    name = "Total Number of Deaths",
+    guide = guide_colorbar(
+      direction = "horizontal",
+      barheight = unit(2, units = "mm"),
+      barwidth = unit(50, units = "mm"),
+      draw.ulim = F,
+      title.position = 'top',
+      title.hjust = 0.5,
+      label.hjust = 0.5
+    )) +
+  labs(title = "Total Number of Deaths By Earthquakes.")
+```
+
+```{r, echo = F}
+ggplot() +
+  geom_polygon(data = country.map.data, aes(fill = avg, x = long, y = lat, group = group)) +
+  geom_path(data = country.map.data, aes(x = long, y = lat, group = group), 
+            color = "black", size = 0.1) +
+  coord_equal() +
+  theme_map() + 
+  theme(legend.position = "bottom", 
+        plot.title = element_text(size = 20, hjust = 0.5)) +
+  scale_fill_viridis(
+    option = "magma", 
+    direction = -1,
+    name = "Average Number of Deaths",
+    guide = guide_colorbar(
+      direction = "horizontal",
+      barheight = unit(2, units = "mm"),
+      barwidth = unit(50, units = "mm"),
+      draw.ulim = F,
+      title.position = 'top',
+      title.hjust = 0.5,
+      label.hjust = 0.5
+    )) +
+  labs(title = "Average Number of Deaths By Earthquakes.")
+```
+
+<br> <br>
+<hr> <hr>
+<br>
+
+# Predicting Number of Deaths
+
+As we can see, this model behaves poorly. It seems that we cannot predict number of deaths based on latitude, longitude, intensity and depth of earthquake. We must try to find another model but since the question doesn't ask for this, we'll leave it here. 
+
+```{r, echo = FALSE, message = F}
+death.stat <- disaster %>% dplyr::select(lat = LATITUDE, long = LONGITUDE, int = EQ_PRIMARY, 
+                           dep = FOCAL_DEPTH, deaths = DEATHS) %>% drop_na()
+library(h2o)
+h2o.init()
+hdeath <- as.h2o(death.stat)
+hglm = h2o.glm(x = c("lat", "long", "int", "dep"),
+               y = "deaths", training_frame = hdeath)
+```
+
+```{r}
+summary(hglm)
+```
+
+<br> <br>
+<hr> <hr>
+<br>
+
+# Predicting Magnitude of Main Earthquake Based on Pre-earthquakes
+
+As we all know, pre-earthquakes happen at the same place, earlier on the same day as the actual earthquake. From this, we can conclude that dates during which only one earthquake occured at a particular time, does not involve any data related to pre-earthquakes. So we delete these days from the dataframe.  
+Also, the earthquake of the highest magnitude is considered the main earthquake and all other earthquakes occuring before it on the same date are considered pre-earthquakes.  
+Given all this, we construct the dataframe as follows:
+
+> The days involving a pre-earthquake:
+
+```{r}
+quake.with.pre <- worldwide %>% 
+  mutate(date = as.Date(time)) %>% 
+  mutate(time = as.POSIXct(time)) %>%
+  dplyr::select(place, date, pre_mag = mag, pre_time = time) %>% 
+  group_by(place, date) %>% filter(n() != 1)
+```
+
+> The main earthquake of those days:
+
+```{r}
+main.quake <- quake.with.pre %>% 
+  group_by(place, date) %>% slice(which.max(pre_mag)) %>% plyr::rename(c("pre_mag" = "main_mag", 
+                                                                     "pre_time" = "main_time"))
+```
+
+
+> The model predicting the magnitude of the main earthquake based on the pre-earthquake
+
+```{r}
+pre.main <- quake.with.pre %>% full_join(main.quake, by = c("place", "date")) %>% 
+  dplyr::filter(main_time > pre_time)
+
+pm.model <- lm(data = pre.main, formula = main_mag ~ pre_mag)
+summary(pm.model)
+```
+<br>
+The R-squared value is relatively high so our model seems to have performed well. 
+
+<br> <br>
+<hr> <hr>
+<br>
+
+# Magnitude Vs. Depth
+
+
+```{r}
+map.depth <- worldwide %>% filter(type == "earthquake") %>% dplyr::select(depth, mag)
+cor.test(map.depth$mag, map.depth$depth)
+```
+
+Based on the low $p-value$ we can conlude that the magnitude and the depth of an earthquake are correlated.
+
+
+<br> <br>
+<hr> <hr>
+<br>
+
+# Haarp Theory
+
+Haarp theory, loosely interpreted, states that, throughout the last few years, the earthquakes have been more frequent and higher in magnitude.  
+In the `worldwide` dataframe, there is no column indicating the country. Will use the following lines of code to determine the country corresponding to each set of `latitude` and `longitude`:
+<br>
+```{r}
+library(sp)
+library(rworldmap)
+coords <- worldwide %>% select(longitude, latitude)
+sp.countries <- getMap(resolution='low')
+sp.points = SpatialPoints(coords, proj4string = CRS(proj4string(sp.countries)))  
+info = over(sp.points, sp.countries)
+worldwide$country <- info$ADMIN
+
+```
+<br>
+
+I've also taken a sample of the data to show the countries calculated:
+<br>
+
+```{r, echo = F}
+worldwide %>% 
+  filter(!is.na(country)) %>%
+  select(country, place, latitude, longitude) %>% 
+  dplyr::sample_n(10) %>%
+  knitr::kable(format = "html") %>% kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "left")
+```
+
+<br>
+
+Now I've drawn an animation to gain a feeling towards the theory. Since the number of countries was a whooping 117, I've sampled only 20 of them. 
+
+<br> <br> <br>
+
+```{r, echo = F}
+country.info.all <- worldwide %>% 
+  dplyr::mutate(year = format(as.Date(time), format="%Y")) %>%
+  filter(!is.na(country)) %>%
+  group_by(country, year) %>% 
+  dplyr::summarise(count = n(), avg_mag = mean(mag, na.rm = T))
+
+selection <- worldwide %>% dplyr::select(country) %>% unique() %>% sample_n(20) %>% unlist() %>% unname()
+country.info <- country.info.all %>% filter(country %in% selection)
+```
+
+
+```{r, echo = F}
+time.count <- country.info %>% spread(year, count) 
+
+highchart() %>% 
+  hc_chart(type = "bar", showLegend = F) %>% 
+  hc_plotOptions(bar = list(borderColor = "black", 
+                            colors = c("#D8A2A2", "#C35E5E", "#B52F2F", "#8B0D0D"), 
+                            colorByPoint = T)) %>% 
+  hc_title(text = "Total Number of Earthquakes in Each Year",
+           align = 'center', 
+           style = list(fontFamily = 'B-Nazanin', 
+                        fontWeight = "italic", fontSize = "35px")) %>%
+  hc_subtitle(text = "For Each Country", 
+              style = list(fontSize = "20px")) %>% 
+  hc_xAxis(categories = c(2015, 2016, 2017, 2018),
+           gridLineColor = "transparent", lineColor = 'black', 
+           tickColor = "black", tickLength = 30, 
+           labels = list(style = list(fontSize="20px"))) %>%
+  hc_add_series(name = "Count",
+                data = list(
+                  list(sequence = time.count$`2015`),
+                  list(sequence = time.count$`2016`),
+                  list(sequence = time.count$`2017`), 
+                  list(sequence = time.count$`2018`)
+                  )
+                ) %>% 
+  hc_motion(enabled = TRUE,
+            labels = time.count$country,
+            series = c(1,0),
+            updateIterval = 100,
+            autoPlay = T) %>%
+  hc_add_theme(hc_theme_elementary()) %>%
+  hc_plotOptions(
+    series = list(
+      showInLegend =F    
+    )) 
+```
+
+<br> <br> <br> <br>
+```{r, echo = F}
+time.mag <- country.info %>% spread(year, avg_mag)
+
+highchart() %>% 
+  hc_chart(type = "bar", showLegend = F) %>% 
+  hc_plotOptions(bar = list(borderColor = "black", 
+                            colors = c("#A2B5E2", "#6581C0", "#4364B0", "#1A409A"), 
+                            colorByPoint = T)) %>% 
+  hc_title(text = "Average Magnitude of Earthquakes in Each Year",
+           align = 'center', 
+           style = list(fontFamily = 'B-Nazanin', 
+                        fontWeight = "italic", fontSize = "35px")) %>%
+  hc_subtitle(text = "For Each Country", 
+              style = list(fontSize = "20px")) %>% 
+  hc_xAxis(categories = c(2015, 2016, 2017, 2018),
+           gridLineColor = "transparent", lineColor = 'black', 
+           tickColor = "black", tickLength = 30, 
+           labels = list(style = list(fontSize="20px"))) %>%
+  hc_add_series(name = "Magnitude",
+                data = list(
+                  list(sequence = time.mag$`2015`),
+                  list(sequence = time.mag$`2016`),
+                  list(sequence = time.mag$`2017`), 
+                  list(sequence = time.mag$`2018`)
+                  )
+                ) %>% 
+  hc_motion(enabled = TRUE,
+            labels = time.mag$country,
+            series = c(1,0),
+            updateIterval = 100,
+            autoPlay = T) %>%
+  hc_add_theme(hc_theme_elementary()) %>%
+  hc_plotOptions(
+    series = list(
+      showInLegend =F    
+    )) 
+```
+
+<br> <br>  <br>  <br> 
+
+
+Now, in order to actually test the Haarp Theory using statistical models, we perform a One Way ANOVA test. 
+
+<br>
+
+```{r}
+aov(data = country.info.all, count ~ year) %>% summary.aov()
+```
+
+
+```{r}
+aov(data = country.info.all, avg_mag ~ year) %>% summary.aov()
+```
+
+The null hypothesis is that the mean of all these groups is the same. Which basically means that the average number of earthquakes per year has not changed in the past few years.  
+Based on the very high $p-value$ we cannot reject this null hypothesis, therefore we do not have enough evidence to conclude whether Haarp Theory is true or not.
+
+
+<br> <br>
+<hr> <hr>
+<br>
+
+
+# Interesting Facts About Earthquakes
+
+## Deadly Earthquakes Are Not So Deadly Anymore. Or Are They?
+
+<br>
+
+I read on the internet that the deadliest earthquake known hit Shansi, China on January 23, 1556, and the estimated number of people who died was 830,000. We'll see if we can find that out from the dataset
+
+```{r}
+disaster %>%
+  dplyr::select(location = LOCATION_NAME, year = YEAR, month = MONTH, day = DAY, deaths = DEATHS) %>%
+  drop_na() %>%
+  arrange(desc(deaths)) %>% head(1)
+  
+```
+
+Let's see how many people in total have been killed by earthquakes.
+
+```{r}
+disaster$DEATHS %>% sum(na.rm = T)
+```
+
+Keep in mind that this is the number of earthquakes that had NA in their `DEATHS` column:
+
+```{r}
+disaster %>% dplyr::select(DEATHS) %>% filter(is.na(DEATHS)) %>% nrow()
+```
+
+out of 6000 observations. So propbably a lot more than 8 million people have died as a cause of earthquake.
+
+<br>
+
+Let's see if Technology and everything we have nowadays that people from a thousand years ago don't have saved more lives from earthquakes or not. 
+
+<br>
+
+First, I've performed a correlation test between `DEATHS` and `YEAR`
+
+```{r}
+test.data <- disaster %>% dplyr::select(YEAR, DEATHS) %>% drop_na()
+cor.test(test.data$DEATHS, test.data$YEAR)
+```
+
+Since the $p-value$ is really small, we can conclude that the correlation isn't zero. Also the correlation estimate is below zero so we can say that throughout time the number of deaths have decreased.
+
+<br>
+
+I've also made two groups based on the data. The first one is before the age of Technology, and the second is after it, which began in the second half of the 20th century. 
+
+```{r}
+before <- test.data %>% dplyr::filter(YEAR <= 1950)
+after <- test.data %>% dplyr::filter(YEAR > 1950)
+```
+
+Then we can draw the density of the number of deaths to see wether they're normal or not.
+
+```{r}
+ggplot(test.data) + 
+  geom_density(aes(x = DEATHS)) +
+  theme_minimal()
+```
+
+As you can see, it's not. So we'll use a Mann-Whitney a.k.a a wilcoxon rank sum test on the data. 
+
+```{r}
+wilcox.test(before$DEATHS, after$DEATHS, alternative = "greater")
+```
+Since the $p-value$ is very small, we can reject the null hypothesis and conlude that there is a statistically significant difference in the mean of the two populations. Also since the alternative hypothesis is greater we can conclude that the average number of deaths before the Technology era was significanly more than after it. 
+
+
+<br> <br>
+<hr> <hr>
+<br>
+
+## Where Does All The Chaos Happen?
+
+<br>
+
+I've used the `disaster` dataframe. 
+
+
+```{r, echo = F}
+all.equakes <- disaster %>% 
+  dplyr::select(lat = LATITUDE, long = LONGITUDE)
+```
+
+Now I've drawn them on the world map:
+
+<br> <br>
+```{r, echo = F}
+mapWorld <- borders("world", colour = "grey")
+
+ggplot() + 
+  mapWorld + 
+  geom_point(aes(x = all.equakes$long, y = all.equakes$lat), color = 'darkred', size = 0.25) + 
+  theme_minimal()
+```
+
+<br> <br> 
+
+As we can see there are two distinct parts of the world where most earthquakes occur. one is at the east edge of South America and the west bridge of Europe and Australia, the other is on the south of Asia and Europe.
+<br>
+These two parts are called The Ring of Fire, also called the Circum-Pacific belt, and The Alpide Belt.
+
+<br>
+
+I've also included pictures of these places so you can see the points on the map I made match. 
+
+<br>
+
+The Ring of Fire:
+<br> <br>
+
+<div align="center">
+<img  src="Ring of Fire.png"  align = 'center'>
+</div>
+
+<br> <br> <br> <br>
+
+The Alpide Belt:
+
+<br> <br>
+
+<div align="center">
+<img  src="Alpide Belt.png"  align = 'center'>
+</div>
+
+<br> <br>
+<hr> <hr>
+<br>
+
+## Intensity Is Not A Synonym For Magnitude
+
+
+<br>
+
+The following paragraph is based on [this](https://earthquake.usgs.gov/learn/facts.php) webpage:
+
+> The magnitude of an earthquake is a measured value of the earthquake size. The magnitude is the same no matter where you are, or how strong or weak the shaking was in various locations. The intensity of an earthquake is a measure of the shaking created by the earthquake, and this value does vary with location.
+
+So I've grouped the `disaster` dataset based on the magnitude of earthquakes and arranged them based on the number of earthquakes with the same magnitude:
+
+<br>
+
+```{r, echo = F}
+disaster %>% 
+  dplyr::select(MAGNITUDE = EQ_PRIMARY, INTENSITY) %>% 
+  drop_na() %>% dplyr::group_by(MAGNITUDE) %>% dplyr::summarise(count = n()) %>% 
+  arrange(desc(count)) %>% head(10)
+```
+
+So as we can see, there are 70 earthquakes of the magnitude 6.0. Below is the location, intensity and number of deaths caused by a sample of the earthquakes with a magnitude of 6.0.
+
+<br>
+
+```{r, echo = F}
+disaster %>%
+  dplyr::filter(EQ_PRIMARY == 6.0) %>%
+  dplyr::select(LOCATION_NAME, INTENSITY, DEATHS) %>% 
+  drop_na() %>%
+  sample_n(10)
+```
+
+<br>
+
+I've calculated the average number of deaths for each density and I've drawn the plot below:
+
+<br>
+
+```{r, echo = F}
+disaster %>% 
+  dplyr::filter(EQ_PRIMARY == 6.0) %>%
+  dplyr::select(INTENSITY, DEATHS) %>% 
+  drop_na() %>%
+  dplyr::group_by(INTENSITY) %>% dplyr::summarise(avg_death = mean(DEATHS)) %>% 
+  hchart(type = 'column', 
+         hcaes(x = INTENSITY, y = avg_death), 
+         name = "Average Number of Deaths", 
+         color = '#D43A53', borderColor = 'black') %>%
+  hc_title(text = "Average Number of Deaths Per Each Distinct Intensity", align = "center", style = list(fontSize="20px")) %>%
+  hc_subtitle(text = "For earthquakes with a magnitude of 6.0.", align = "center") %>%
+  hc_xAxis(title = list(text = "", style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white", fontSize = "15px"))) %>%
+  hc_yAxis(title = list(text = ""),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+```
+
+<br> 
+
+As you can most definitely see, there is a vast difference between earthquakes with an intensity of 11 and other values. Since the difference is obvious from the chart, I won't perform a hypotheis test anymore.
+
+<br>
+
+Below is the data collected for the chart above:
+
+<br>
+
+```{r, echo = F}
+disaster %>% 
+  dplyr::filter(EQ_PRIMARY == 6.0) %>%
+  dplyr::select(INTENSITY, DEATHS) %>% 
+  drop_na() %>%
+  dplyr::group_by(INTENSITY) %>% dplyr::summarise(avg_death = mean(DEATHS))
+```
+
+To see the differences in the other values for intensity better I've also drawn this plot:
+
+<br>
+
+```{r, echo = F}
+
+disaster %>% 
+  dplyr::filter(EQ_PRIMARY == 6.0) %>%
+  dplyr::select(INTENSITY, DEATHS) %>% 
+  drop_na() %>%
+  dplyr::group_by(INTENSITY) %>% dplyr::summarise(avg_death = mean(DEATHS)) %>% 
+  dplyr::filter(INTENSITY != 11) %>%
+  hchart(type = 'column', 
+         hcaes(x = INTENSITY, y = avg_death), 
+         name = "Average Number of Deaths", 
+         color = '#D43A53', borderColor = 'black') %>%
+  hc_title(text = "Average Number of Deaths Per Each Distinct Intensity", align = "center", style = list(fontSize="20px")) %>%
+  hc_subtitle(text = "For earthquakes with a magnitude of 6.0.", align = "center") %>%
+  hc_xAxis(title = list(text = "", style = list(color = "white", fontSize="20px")),tickColor = "white",
+           labels = list(style = list(color = "white", fontSize = "15px"))) %>%
+  hc_yAxis(title = list(text = ""),tickColor = "white",
+           labels = list(style = list(color = "white"))) %>% 
+  hc_add_theme(hc_theme_merge(hc_theme_538(), hc_theme_darkunica()))
+
+```
+
+
+At last I've performed a corrlation test on the 70 earthquakes with the magnitude of 6.0 to see whether `INTENSITY` has a positive correlation with `DEATHS` or not.
+
+```{r, echo = F}
+test.data <- disaster %>% 
+  dplyr::filter(EQ_PRIMARY == 6.0) %>%
+  dplyr::select(INTENSITY, DEATHS) %>% 
+  drop_na()
+```
+
+<br>
+```{r}
+cor.test(test.data$INTENSITY, test.data$DEATHS, alternative = "greater")
+```
+
+The $p-value$ is less than 0.05, so we can reject the null hypothesis and kind of conclude that the higher the intensity is, the higher the number of deaths. 
+
+<br> <br> <br>
