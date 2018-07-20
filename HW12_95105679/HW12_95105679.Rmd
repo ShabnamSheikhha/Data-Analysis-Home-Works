@@ -387,6 +387,18 @@ get.most.alike(movie.transactions, "Memento (2000)")
 get.most.alike(movie.transactions, "No Country for Old Men (2007)")
 ```
 
+
+<br>
+
+I've also called the function on all four of them together:
+
+```{r}
+get.most.alike(movie.transactions, c("Castle in the Sky (Tenkû no shiro Rapyuta) (1986)", 
+                                     "Cast Away (2000)", 
+                                     "Memento (2000)",
+                                     "No Country for Old Men (2007)"))
+```
+
 <br> <br>
 <hr> <hr> 
 <br>
